@@ -1,0 +1,285 @@
+#!/usr/bin/env bash
+
+# shellcheck disable=SC1091
+. bpm
+bpm::include ansi
+bpm::include array
+bpm::include assign
+bpm::include readkey
+
+maze::cutNotch() {
+    local board notchCoords pos x y
+
+    board=$2
+    x=$3
+    y=$4
+    maze::randomBorderPosition notchCoords "$x" "$y"
+    maze::index pos "$x" "${notchCoords[0]}" "${notchCoords[1]}"
+    maze::setChar board "$board" "$pos" " "
+    maze::index pos "$x" "${notchCoords[2]}" "${notchCoords[3]}"
+    maze::setChar board "$board" "$pos" " "
+
+    local "$1" && assign::array "$1" "$board" "${notchCoords[@]}"
+}
+
+maze::exploreArea() {
+    local board posX posY results x y
+
+    board=$2
+    x=$3
+    y=$4
+    posX=$5
+    posY=$6
+    results=()
+
+    if [[ $((posX - 1)) -gt 0 ]]; then
+        if maze::isGoodSpot "$board" "$x" $((posX - 1)) "$posY"; then
+            results[${#results[@]}]="$((posX - 1)),$posY"
+        # else
+        #     echo "left is no good"
+        fi
+    # else
+    #     echo "up is out of bounds"
+    fi
+
+    if [[ $((posX + 1)) -lt $((x - 1)) ]]; then
+        if maze::isGoodSpot "$board" "$x" $((posX + 1)) "$posY"; then
+            results[${#results[@]}]="$((posX + 1)),$posY"
+        # else
+        #     echo "right is no good"
+        fi
+    # else
+    #     echo "right is out of bounds"
+    fi
+
+    if [[ $((posY - 1)) -gt 0 ]]; then
+        if maze::isGoodSpot "$board" "$x" "$posX" $((posY - 1)); then
+            results[${#results[@]}]="$posX,$((posY - 1))"
+        # else
+        #     echo "up is no good"
+        fi
+    # else
+    #     echo "up is out of bounds"
+    fi
+
+    if [[ $((posY + 1)) -lt $((y - 1)) ]]; then
+        if maze::isGoodSpot "$board" "$x" "$posX" $((posY + 1)); then
+            results[${#results[@]}]="$posX,$((posY + 1))"
+        # else
+        #     echo "down is no good"
+        fi
+    # else
+    #     echo "down is out of bounds"
+    fi
+
+    local "$1" && assign::array "$1" ${results[@]+"${results[@]}"}
+}
+
+# maze::index dest boardX locationX locationY
+maze::index() {
+    local boardX index locationX locationY
+
+    locationX=$3
+    locationY=$4
+    boardX=$2
+    index=$((locationY * boardX + locationX))
+
+    local "$1" && assign::value "$1" "$index"
+}
+
+maze::isGoodSpot() {
+    local char board index index1 index2 index3 index4 nearbyEmptySpots posX posY x y
+
+    board=$1
+    x=$2
+    posX=$3
+    posY=$4
+    nearbyEmptySpots=false
+
+    maze::index index "$x" "$posX" "$posY"
+    char=${board:index:1}
+
+    if [[ "$char" == " " ]]; then
+        return 1
+    fi
+
+    maze::index index1 "$x" $((posX - 1)) "$posY"
+    maze::index index2 "$x" $((posX + 1)) "$posY"
+    maze::index index3 "$x" "$posX" $((posY - 1))
+    maze::index index4 "$x" "$posX" $((posY + 1))
+
+    for index in "$index1" "$index2" "$index3" "$index4"; do
+        char=${board:index:1}
+
+        if [[ "$char" == " " ]]; then
+            if $nearbyEmptySpots; then
+                return 1
+            fi
+
+            nearbyEmptySpots=true
+        fi
+    done
+
+    return 0
+}
+
+maze::makeMazeBoard() {
+    local board boardAndStart innerX innerY row x y
+
+    x=$2
+    y=$3
+    innerX=$((x - 2))
+    innerY=$((y - 2))
+    maze::makeMazeLine board 'X' "$innerX"
+
+    while [[ $innerY -gt 0 ]]; do
+        innerY=$((innerY - 1))
+        maze::makeMazeLine row '#' "$innerX"
+        board+=$row
+    done
+
+    maze::makeMazeLine row 'X' "$innerX"
+    board+=$row
+    maze::cutNotch boardAndStart "$board" "$x" "$y"
+
+    local "$1" && assign::array "$1" "${boardAndStart[@]}"
+}
+
+maze::makeMazeLine() {
+    local repeatChar repeatNum result
+
+    result=""
+    repeatChar=$2
+    repeatNum=$3
+
+    while [[ "${#result}" -lt "$repeatNum" ]]; do
+        result+=$repeatChar
+    done
+
+    local "$1" && assign::value "$1" "X${result}X"
+}
+
+maze::makeMaze() {
+    local board result startPos x y
+
+    x=$1
+    y=$2
+    maze::makeMazeBoard result "$x" "$y"
+    board=${result[0]}
+    startPos=("${result[1]}" "${result[2]}")
+    openSpots=("${result[3]},${result[4]}")
+    echo "startPos" "${startPos[@]}"
+    # echo "openSpots" "${openSpots[@]}"
+    # maze::showBoard "$board" "$x"
+
+    while [[ "${#openSpots[@]}" -gt 0 ]]; do
+        maze::nibble result "$board" "$x" "$y" "${openSpots[@]}"
+        board=${result[0]}
+        openSpots=("${result[@]:1}")
+        # echo "openSpots" "${openSpots[@]}"
+        # maze::showBoard "$board" "$x"
+    done
+
+    maze::showBoard "$board" "$x"
+}
+
+maze::nibble() {
+    local board goodSpots index openSpots pos posX posY target x y
+
+    target=$1
+    shift
+    board=$1
+    shift
+    x=$1
+    shift
+    y=$1
+    shift
+    openSpots=("$@")
+
+    maze::random index ${#openSpots[@]}
+    pos=${openSpots[index]}
+    # echo "pos: $pos"
+    openSpots=("${openSpots[@]:0:index}" "${openSpots[@]:index + 1}")
+    posX=${pos%,*}
+    posY=${pos#*,}
+    maze::exploreArea goodSpots "$board" "$x" "$y" "$posX" "$posY"
+    # echo "${goodSpots[@]}"
+
+    if [[ "${#goodSpots[@]}" -gt 1 ]]; then
+        openSpots[${#openSpots[@]}]=$pos
+    fi
+
+    if [[ "${#goodSpots[@]}" -gt 0 ]]; then
+        maze::random index ${#goodSpots[@]}
+        pos=${goodSpots[index]}
+        posX=${pos%,*}
+        posY=${pos#*,}
+        # echo "posX $posX posY $posY index $index"
+        maze::index index "$x" "$posX" "$posY"
+        maze::setChar board "$board" "$index" " "
+
+        if ! array::contains "$posX,$posY" ${openSpots[@]+"${openSpots[@]}"}; then
+            openSpots[${#openSpots[@]}]="$posX,$posY"
+        fi
+    fi
+
+    local "$target" && assign::array "$target" "$board" ${openSpots[@]+"${openSpots[@]}"}
+}
+
+maze::random() {
+    printf -v "$1" "%s" "$((RANDOM % $2))"
+}
+
+maze::randomBorderPosition() {
+    local max pos r x y
+
+    x=$2
+    y=$3
+
+    # Have to avoid corners
+    max=$((x + x + y + y - 8))
+    maze::random r "$max"
+
+    r=$((r + 1))
+
+    if [[ "$r" -lt $((x - 1)) ]]; then
+        pos=("$r" 0 "$r" 1)
+    else
+        r=$((r - (x - 2)))
+
+        if [[ "$r" -lt $((x - 1)) ]]; then
+            pos=("$r" $((y - 1)) "$r" $((y - 2)))
+        else
+            r=$((r - (x - 2)))
+
+            if [[ "$r" -lt $((y - 1)) ]]; then
+                pos=(0 "$r" 1 "$r")
+            else
+                r=$((r - (y - 2)))
+                pos=($((x - 1)) "$r" $((x - 2)) "$r")
+            fi
+        fi
+    fi
+
+    local "$1" && assign::array "$1" "${pos[@]}"
+}
+
+# maze::setChar board "$board" 13 .
+maze::setChar() {
+    printf -v "$1" "%s%s%s" "${2:0:$3}" "$4" "${2:1 + $3}"
+}
+
+maze::showBoard() {
+    local board x
+
+    board=$1
+    x=$2
+
+    while [[ -n "$board" ]]; do
+        echo "${board:0:x}"
+        board="${board:x}"
+    done
+}
+
+
+maze::makeMaze 20 10
