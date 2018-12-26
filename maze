@@ -1,5 +1,14 @@
 #!/usr/bin/env bash
 
+# Maze board array members
+# [0] Width of board, in cells.
+# [1] Height of board, in cells.
+# [2] Board data, stored as a large string.
+# [3] Starting X
+# [4] Starting Y
+# [5] Ending X
+# [6] Ending Y
+
 # shellcheck disable=SC1091
 . bpm
 bpm::include ansi
@@ -7,279 +16,239 @@ bpm::include array
 bpm::include assign
 bpm::include readkey
 
-maze::cutNotch() {
-    local board notchCoords pos x y
 
-    board=$2
-    x=$3
-    y=$4
-    maze::randomBorderPosition notchCoords "$x" "$y"
-    maze::index pos "$x" "${notchCoords[0]}" "${notchCoords[1]}"
-    maze::setChar board "$board" "$pos" " "
-    maze::index pos "$x" "${notchCoords[2]}" "${notchCoords[3]}"
-    maze::setChar board "$board" "$pos" " "
+# Pick a spot in the maze near the edge as a start.
+# Dig tunnels all over.
+#
+# $1 - Destination variable name for the board array.
+# $2 - Board X (width in cells)
+# $3 - Board Y (height in cells)
+# $4 - Board data
+maze::carvePaths() {
+    local board boardX boardY center coords coordX coordY delta lastX lastY leftToCheck minX minY rowSize startX startY validPaths
 
-    local "$1" && assign::array "$1" "$board" "${notchCoords[@]}"
-}
-
-maze::exploreArea() {
-    local board posX posY results x y
-
-    board=$2
-    x=$3
-    y=$4
-    posX=$5
-    posY=$6
-    results=()
-
-    if [[ $((posX - 1)) -gt 0 ]]; then
-        if maze::isGoodSpot "$board" "$x" $((posX - 1)) "$posY"; then
-            results[${#results[@]}]="$((posX - 1)),$posY"
-        # else
-        #     echo "left is no good"
-        fi
-    # else
-    #     echo "up is out of bounds"
-    fi
-
-    if [[ $((posX + 1)) -lt $((x - 1)) ]]; then
-        if maze::isGoodSpot "$board" "$x" $((posX + 1)) "$posY"; then
-            results[${#results[@]}]="$((posX + 1)),$posY"
-        # else
-        #     echo "right is no good"
-        fi
-    # else
-    #     echo "right is out of bounds"
-    fi
-
-    if [[ $((posY - 1)) -gt 0 ]]; then
-        if maze::isGoodSpot "$board" "$x" "$posX" $((posY - 1)); then
-            results[${#results[@]}]="$posX,$((posY - 1))"
-        # else
-        #     echo "up is no good"
-        fi
-    # else
-    #     echo "up is out of bounds"
-    fi
-
-    if [[ $((posY + 1)) -lt $((y - 1)) ]]; then
-        if maze::isGoodSpot "$board" "$x" "$posX" $((posY + 1)); then
-            results[${#results[@]}]="$posX,$((posY + 1))"
-        # else
-        #     echo "down is no good"
-        fi
-    # else
-    #     echo "down is out of bounds"
-    fi
-
-    local "$1" && assign::array "$1" ${results[@]+"${results[@]}"}
-}
-
-# maze::index dest boardX locationX locationY
-maze::index() {
-    local boardX index locationX locationY
-
-    locationX=$3
-    locationY=$4
     boardX=$2
-    index=$((locationY * boardX + locationX))
+    boardY=$3
+    board=$4
 
-    local "$1" && assign::value "$1" "$index"
+    rowSize=$((boardX * 2 + 1))
+
+    case "$((RANDOM % 4))" in
+        0)
+            startX=$((RANDOM % boardX))
+            startY=0
+            ;;
+
+        1)
+            startX=$((boardX - 1))
+            startY=$((RANDOM % boardY))
+            ;;
+
+        2)
+            startX=$((RANDOM % boardX))
+            startY=$((boardY - 1))
+            ;;
+
+        3)
+            startX=0
+            startY=$((RANDOM % boardY))
+            ;;
+    esac
+
+    leftToCheck=("$startX,$startY")
+    minX=$((boardX - 1))
+    minY=$((boardY - 1))
+
+    while [[ "${#leftToCheck[@]}" -gt 0 ]]; do
+        random=$((RANDOM % ${#leftToCheck[@]}))
+        coords=${leftToCheck[random]}
+        coordX=${coords%,*}
+        coordY=${coords#*,}
+        leftToCheck=("${leftToCheck[@]:0:random}" "${leftToCheck[@]:random + 1}")
+        validPaths=()
+        center=$((coordY * rowSize * 2 + rowSize + coordX * 2 + 1))
+
+        if [[ $coordX != 0 ]] && maze::isValidPath "$center" "$rowSize" "-1" "$board"; then
+            validPaths[${#validPaths[@]}]="-1,0"
+        fi
+
+        if [[ $coordX != "$minX" ]] && maze::isValidPath "$center" "$rowSize" "1" "$board"; then
+            validPaths[${#validPaths[@]}]="1,0"
+        fi
+
+        if [[ $coordY != 0 ]] && maze::isValidPath "$center" "$rowSize" "-$rowSize" "$board"; then
+            validPaths[${#validPaths[@]}]="0,-1"
+        fi
+
+        if [[ $coordY != "$minY" ]] && maze::isValidPath "$center" "$rowSize" "$rowSize" "$board"; then
+            validPaths[${#validPaths[@]}]="0,1"
+        fi
+
+        case "${#validPaths[@]}" in
+            2|3)
+                # If there's other options, put this back in the list for later processing
+                leftToCheck[${#leftToCheck[@]}]=$coords
+                ;&
+
+            1)
+                random=$((RANDOM % ${#validPaths[@]}))
+                delta=${validPaths[random]}
+                center=$((center + ${delta#*,} * rowSize + ${delta%,*}))
+                board=${board:0:center}' '${board:center + 1}
+                lastX=$((coordX + ${delta%,*}))
+                lastY=$((coordY + ${delta#*,}))
+                leftToCheck[${#leftToCheck[@]}]=$lastX,$lastY
+        esac
+    done
+
+    local "$1" && assign::array "$1" "$boardX" "$boardY" "$board" "$startX" "$startY" "$lastX" "$lastY"
 }
 
-maze::isGoodSpot() {
-    local char board index index1 index2 index3 index4 nearbyEmptySpots posX posY x y
 
-    board=$1
-    x=$2
-    posX=$3
-    posY=$4
-    nearbyEmptySpots=false
+# Determines if it is acceptable to make a path connecting two cells.
+#
+# $1 - Index in the board data for the cell where we start
+# $2 - The computed size of one row
+# $3 - The amount of change in X
+# $4 - The amount of change in Y
+# $5 - Board data
+#
+# Returns true (0) when these two cells can be connected. Any other value
+# indicates they should not be connected.
+maze::isValidPath() {
+    local centerIndex delta index rowSize
 
-    maze::index index "$x" "$posX" "$posY"
-    char=${board:index:1}
+    centerIndex=$1
+    rowSize=$2
+    delta=$3
+    board=$4
+    shift 4
 
-    if [[ "$char" == " " ]]; then
+    # Move to the wall
+    index=$((centerIndex + delta))
+
+    if [[ "${board:index:1}" == " " ]]; then
+        # Already a path in this direction
         return 1
     fi
 
-    maze::index index1 "$x" $((posX - 1)) "$posY"
-    maze::index index2 "$x" $((posX + 1)) "$posY"
-    maze::index index3 "$x" "$posX" $((posY - 1))
-    maze::index index4 "$x" "$posX" $((posY + 1))
+    # Move to the middle of the tile we want to check
+    index=$((index + delta))
 
-    for index in "$index1" "$index2" "$index3" "$index4"; do
-        char=${board:index:1}
-
-        if [[ "$char" == " " ]]; then
-            if $nearbyEmptySpots; then
-                return 1
-            fi
-
-            nearbyEmptySpots=true
-        fi
-    done
+    if [[ "${board:index - 1:1}" == " " ]] ||
+        [[ "${board:index + 1:1}" == " " ]] ||
+        [[ "${board:index - rowSize:1}" == " " ]] ||
+        [[ "${board:index + rowSize:1}" == " " ]]; then
+        # Adjacent cell is already connected
+        return 1
+    fi
 
     return 0
 }
 
+
+# Creates a maze board array structure. Does not connect cells.
+#
+# $1 - Destination variable name for the board array
+# $2 - Width of board in cells
+# $3 - Height of board in cells
 maze::makeMazeBoard() {
-    local board boardAndStart innerX innerY row x y
+    local board cells divider rowsLeft x y
 
     x=$2
     y=$3
-    innerX=$((x - 2))
-    innerY=$((y - 2))
-    maze::makeMazeLine board 'X' "$innerX"
+    rowsLeft=$3
 
-    while [[ $innerY -gt 0 ]]; do
-        innerY=$((innerY - 1))
-        maze::makeMazeLine row '#' "$innerX"
-        board+=$row
+    maze::makeMazeLine divider "$x" "+" "-+"
+    maze::makeMazeLine cells "$x" "|" " |"
+    board="$divider"
+
+    while [[ $rowsLeft -gt 0 ]]; do
+        rowsLeft=$((rowsLeft - 1))
+        board+="$cells$divider"
     done
 
-    maze::makeMazeLine row 'X' "$innerX"
-    board+=$row
-    maze::cutNotch boardAndStart "$board" "$x" "$y"
-
-    local "$1" && assign::array "$1" "${boardAndStart[@]}"
+    local "$1" && assign::array "$1" "$x" "$y" "$board"
 }
 
+
+# Creates a single line of a maze board.
+#
+# $1 - Destination variable name.
+# $2 - Length of line in cells.
+# $3 - Starting string for the line.
+# $4 - String to append for each cell.
 maze::makeMazeLine() {
-    local repeatChar repeatNum result
+    local len line
 
-    result=""
-    repeatChar=$2
-    repeatNum=$3
+    len=$2
+    line=$3
 
-    while [[ "${#result}" -lt "$repeatNum" ]]; do
-        result+=$repeatChar
+    while [[ $len -gt 0 ]]; do
+        len=$((len - 1))
+        line+=$4
     done
 
-    local "$1" && assign::value "$1" "X${result}X"
+    local "$1" && assign::value "$1" "$line"
 }
 
+
+# Creates a maze board array, complete with tunnels, the start point and end
+# point.
+#
+# $1 - Destination variable name for the board data.
+# $2 - Width of board in cells.
+# $3 - Height of board in cells.
 maze::makeMaze() {
-    local board result startPos x y
+    local boardData
+    # local result startPos
+
+    # Width and height in the number of cells
+    maze::makeMazeBoard boardData "$2" "$3"
+
+    # Make corridors
+    maze::carvePaths boardData "${boardData[@]}"
+    # maze::showBoardData "${boardData[@]}"
+
+    local "$1" && assign::array "$1" "${boardData[@]}"
+}
+
+
+# Display a maze board.
+#
+# $@ - The maze board array.
+maze::showBoardData() {
+    local board index rowSize x
 
     x=$1
-    y=$2
-    maze::makeMazeBoard result "$x" "$y"
-    board=${result[0]}
-    startPos=("${result[1]}" "${result[2]}")
-    openSpots=("${result[3]},${result[4]}")
-    echo "startPos" "${startPos[@]}"
-    # echo "openSpots" "${openSpots[@]}"
-    # maze::showBoard "$board" "$x"
+    board=$3
+    rowSize=$((2 * x + 1))
 
-    while [[ "${#openSpots[@]}" -gt 0 ]]; do
-        maze::nibble result "$board" "$x" "$y" "${openSpots[@]}"
-        board=${result[0]}
-        openSpots=("${result[@]:1}")
-        # echo "openSpots" "${openSpots[@]}"
-        # maze::showBoard "$board" "$x"
-    done
-
-    maze::showBoard "$board" "$x"
-}
-
-maze::nibble() {
-    local board goodSpots index openSpots pos posX posY target x y
-
-    target=$1
-    shift
-    board=$1
-    shift
-    x=$1
-    shift
-    y=$1
-    shift
-    openSpots=("$@")
-
-    maze::random index ${#openSpots[@]}
-    pos=${openSpots[index]}
-    # echo "pos: $pos"
-    openSpots=("${openSpots[@]:0:index}" "${openSpots[@]:index + 1}")
-    posX=${pos%,*}
-    posY=${pos#*,}
-    maze::exploreArea goodSpots "$board" "$x" "$y" "$posX" "$posY"
-    # echo "${goodSpots[@]}"
-
-    if [[ "${#goodSpots[@]}" -gt 1 ]]; then
-        openSpots[${#openSpots[@]}]=$pos
+    if [[ -n "$4" ]]; then
+        index=$((rowSize + $5 * rowSize * 2 + $4 * 2 + 1))
+        board="${board:0:index}S${board:index + 1}"
     fi
 
-    if [[ "${#goodSpots[@]}" -gt 0 ]]; then
-        maze::random index ${#goodSpots[@]}
-        pos=${goodSpots[index]}
-        posX=${pos%,*}
-        posY=${pos#*,}
-        # echo "posX $posX posY $posY index $index"
-        maze::index index "$x" "$posX" "$posY"
-        maze::setChar board "$board" "$index" " "
-
-        if ! array::contains "$posX,$posY" ${openSpots[@]+"${openSpots[@]}"}; then
-            openSpots[${#openSpots[@]}]="$posX,$posY"
-        fi
+    if [[ -n "$6" ]]; then
+        index=$((rowSize + $7 * rowSize * 2 + $6 * 2 + 1))
+        board="${board:0:index}E${board:index + 1}"
     fi
-
-    local "$target" && assign::array "$target" "$board" ${openSpots[@]+"${openSpots[@]}"}
-}
-
-maze::random() {
-    printf -v "$1" "%s" "$((RANDOM % $2))"
-}
-
-maze::randomBorderPosition() {
-    local max pos r x y
-
-    x=$2
-    y=$3
-
-    # Have to avoid corners
-    max=$((x + x + y + y - 8))
-    maze::random r "$max"
-
-    r=$((r + 1))
-
-    if [[ "$r" -lt $((x - 1)) ]]; then
-        pos=("$r" 0 "$r" 1)
-    else
-        r=$((r - (x - 2)))
-
-        if [[ "$r" -lt $((x - 1)) ]]; then
-            pos=("$r" $((y - 1)) "$r" $((y - 2)))
-        else
-            r=$((r - (x - 2)))
-
-            if [[ "$r" -lt $((y - 1)) ]]; then
-                pos=(0 "$r" 1 "$r")
-            else
-                r=$((r - (y - 2)))
-                pos=($((x - 1)) "$r" $((x - 2)) "$r")
-            fi
-        fi
-    fi
-
-    local "$1" && assign::array "$1" "${pos[@]}"
-}
-
-# maze::setChar board "$board" 13 .
-maze::setChar() {
-    printf -v "$1" "%s%s%s" "${2:0:$3}" "$4" "${2:1 + $3}"
-}
-
-maze::showBoard() {
-    local board x
-
-    board=$1
-    x=$2
 
     while [[ -n "$board" ]]; do
-        echo "${board:0:x}"
-        board="${board:x}"
+        echo "${board:0:1 + x * 2}"
+        board="${board:1 + x * 2}"
     done
 }
 
 
-maze::makeMaze 20 10
+maze() {
+    local board
+
+    maze::makeMaze board 20 10
+    maze::showBoardData "${board[@]}"
+}
+
+
+if ! bpm::isSourced; then
+    maze "$@"
+fi

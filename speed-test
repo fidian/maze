@@ -1,0 +1,42 @@
+#!/usr/bin/env bash
+
+# shellcheck disable=SC1091
+. bpm
+bpm::include bench
+. ./maze
+threeByThree="+-+-+-+| | | |+-+-+-+| | | |+-+-+-+| | | |+-+-+-+"
+tenByTen="+-+-+-+-+-+-+-+-+-+-+| | | | | | | | | | |+-+-+-+-+-+-+-+-+-+-+| | | | | | | | | | |"
+tenByTen+="+-+-+-+-+-+-+-+-+-+-+| | | | | | | | | | |+-+-+-+-+-+-+-+-+-+-+| | | | | | | | | | |"
+tenByTen+="+-+-+-+-+-+-+-+-+-+-+| | | | | | | | | | |+-+-+-+-+-+-+-+-+-+-+| | | | | | | | | | |"
+tenByTen+="+-+-+-+-+-+-+-+-+-+-+| | | | | | | | | | |+-+-+-+-+-+-+-+-+-+-+| | | | | | | | | | |"
+tenByTen+="+-+-+-+-+-+-+-+-+-+-+| | | | | | | | | | |+-+-+-+-+-+-+-+-+-+-+| | | | | | | | | | |"
+tenByTen+="+-+-+-+-+-+-+-+-+-+-+"
+
+bench::test::carvePaths-03() {
+    RANDOM=1
+    maze::carvePaths x 3 3 "$threeByThree"
+}
+
+bench::test::carvePaths-10() {
+    RANDOM=1
+    maze::carvePaths x 10 10 "$tenByTen"
+}
+
+bench::test::isValidPath-03() {
+    maze::isValidPath 24 7 -1 0 "$threeByThree"
+    maze::isValidPath 24 7 1 0 "$threeByThree"
+    maze::isValidPath 24 7 0 -1 "$threeByThree"
+    maze::isValidPath 24 7 0 1 "$threeByThree"
+}
+
+bench::test::makeMazeBoard-20x10() {
+    RANDOM=1
+    maze::makeMazeBoard x 20 10
+}
+
+bench::test::makeMaze-3x3() {
+    RANDOM=1
+    maze::makeMaze x 3 3
+}
+
+bench::auto
