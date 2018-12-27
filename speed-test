@@ -23,10 +23,10 @@ bench::test::carvePaths-10() {
 }
 
 bench::test::isValidPath-03() {
-    maze::isValidPath 24 7 -1 0 "$threeByThree"
-    maze::isValidPath 24 7 1 0 "$threeByThree"
-    maze::isValidPath 24 7 0 -1 "$threeByThree"
-    maze::isValidPath 24 7 0 1 "$threeByThree"
+    maze::isValidPath 24 7 -1 "$threeByThree"
+    maze::isValidPath 24 7 1 "$threeByThree"
+    maze::isValidPath 24 7 -7 "$threeByThree"
+    maze::isValidPath 24 7 7 "$threeByThree"
 }
 
 bench::test::makeMazeBoard-20x10() {

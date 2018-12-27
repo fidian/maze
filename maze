@@ -9,6 +9,11 @@
 # [5] Ending X
 # [6] Ending Y
 
+# Position array
+# [0] X position, in cells
+# [1] Y position, in cells
+# [2] Direction facing (N, S, E, W)
+
 # shellcheck disable=SC1091
 . bpm
 bpm::include ansi
@@ -135,10 +140,7 @@ maze::isValidPath() {
     # Move to the middle of the tile we want to check
     index=$((index + delta))
 
-    if [[ "${board:index - 1:1}" == " " ]] ||
-        [[ "${board:index + 1:1}" == " " ]] ||
-        [[ "${board:index - rowSize:1}" == " " ]] ||
-        [[ "${board:index + rowSize:1}" == " " ]]; then
+    if [[ "${board:index - 1:1}${board:index + 1:1}${board:index - rowSize:1}${board:index + rowSize:1}" == *" "* ]]; then
         # Adjacent cell is already connected
         return 1
     fi
@@ -214,41 +216,124 @@ maze::makeMaze() {
 }
 
 
+# Sets the initial position for the player
+#
+# $1 - Destination variable name for the position data array.
+# $2-$@ - The board information
+maze::setInitialPosition() {
+    local board boardX boardY dir directions index random rowSize spot startX startY
+
+    boardX=$2
+    boardY=$3
+    board=$4
+    startX=$5
+    startY=$6
+    rowSize=$((1 + boardX * 2))
+    index=$((rowSize + startY * 2 * rowSize + 1 + startX * 2))
+    directions=NESW
+
+    while true; do
+        random=$((RANDOM % ${#directions}))
+        dir=${directions:random:1}
+
+        case "$dir" in
+            N)
+                spot=${board:index - rowSize:1}
+                ;;
+
+            E)
+                spot=${board:index + 1:1}
+                ;;
+
+            S)
+                spot=${board:index + rowSize:1}
+                ;;
+
+            W)
+                spot=${board:index - 1:1}
+                ;;
+        esac
+
+        if [[ "$spot" == " " ]]; then
+            local "$1" && assign::array "$1" "$startX" "$startY" "$dir"
+            return
+        fi
+
+        directions="${directions:0:random}${directions:random + 1}"
+    done
+}
+
+
 # Display a maze board.
 #
-# $@ - The maze board array.
+# $@ - The maze board array, optionally followed by the position array.
 maze::showBoardData() {
-    local board index rowSize x
+    local board index line lines marker rowSize x y
 
     x=$1
     board=$3
     rowSize=$((2 * x + 1))
+    lines=()
+
+    while [[ -n "$board" ]]; do
+        lines[${#lines[@]}]=${board:0:rowSize}
+        board=${board:rowSize}
+    done
 
     if [[ -n "$4" ]]; then
-        index=$((rowSize + $5 * rowSize * 2 + $4 * 2 + 1))
-        board="${board:0:index}S${board:index + 1}"
+        case "${10-}" in
+            N)
+                marker="^"
+                ;;
+
+            E)
+                marker=">"
+                ;;
+
+            S)
+                marker="v"
+                ;;
+
+            W)
+                marker="<"
+                ;;
+
+            *)
+                marker="*"
+                ;;
+        esac
+
+        marker=$(ansi --bg-blue --yellow --bold "$marker")
+
+        y=$((1 + $5 * 2))
+        line=${lines[$y]}
+        lines[$y]="${line:0:1 + $4 * 2}$marker${line:2 + $4 * 2}"
     fi
 
     if [[ -n "$6" ]]; then
-        index=$((rowSize + $7 * rowSize * 2 + $6 * 2 + 1))
-        board="${board:0:index}E${board:index + 1}"
+        marker=$(ansi --green --bold X)
+        y=$((1 + $7 * 2))
+        line=${lines[$y]}
+        lines[$y]="${line:0:1 + $6 * 2}E${line:2 + $6 * 2}"
     fi
 
-    while [[ -n "$board" ]]; do
-        echo "${board:0:1 + x * 2}"
-        board="${board:1 + x * 2}"
+    for line in "${lines[@]}"; do
+        echo "$line"
     done
 }
 
 
 maze() {
-    local board
+    local board position
 
     maze::makeMaze board 20 10
-    maze::showBoardData "${board[@]}"
+    maze::setInitialPosition position "${board[@]}"
+    maze::showBoardData "${board[@]}" "${position[@]}"
+    set | grep ^position=
 }
 
 
 if ! bpm::isSourced; then
-    maze "$@"
+    # Disabling locale settings makes this marginally faster
+    LC_ALL=C LANG=C maze "$@"
 fi
