@@ -12,7 +12,7 @@
 # Position array
 # [0] X position, in cells
 # [1] Y position, in cells
-# [2] Direction facing (N, S, E, W)
+# [2] Direction facing (0=North, 1=East, 2=South, 3=West
 
 # shellcheck disable=SC1091
 . bpm
@@ -221,7 +221,7 @@ maze::makeMaze() {
 # $1 - Destination variable name for the position data array.
 # $2-$@ - The board information
 maze::setInitialPosition() {
-    local board boardX boardY dir directions index random rowSize spot startX startY
+    local board boardX boardY dir directions index offset offsetList random rowSize spot startX startY
 
     boardX=$2
     boardY=$3
@@ -230,29 +230,14 @@ maze::setInitialPosition() {
     startY=$6
     rowSize=$((1 + boardX * 2))
     index=$((rowSize + startY * 2 * rowSize + 1 + startX * 2))
-    directions=NESW
+    directions=0123
 
     while true; do
         random=$((RANDOM % ${#directions}))
         dir=${directions:random:1}
-
-        case "$dir" in
-            N)
-                spot=${board:index - rowSize:1}
-                ;;
-
-            E)
-                spot=${board:index + 1:1}
-                ;;
-
-            S)
-                spot=${board:index + rowSize:1}
-                ;;
-
-            W)
-                spot=${board:index - 1:1}
-                ;;
-        esac
+        offsetList=("-$rowSize" 1 "$rowSize" -1)
+        offset=${offsetList[dir]}
+        spot=${board:index + offset:1}
 
         if [[ "$spot" == " " ]]; then
             local "$1" && assign::array "$1" "$startX" "$startY" "$dir"
@@ -281,28 +266,8 @@ maze::showBoardData() {
     done
 
     if [[ -n "$4" ]]; then
-        case "${10-}" in
-            N)
-                marker="^"
-                ;;
-
-            E)
-                marker=">"
-                ;;
-
-            S)
-                marker="v"
-                ;;
-
-            W)
-                marker="<"
-                ;;
-
-            *)
-                marker="*"
-                ;;
-        esac
-
+        marker="^>v<*"
+        marker=${marker:${10-4}:1}
         marker=$(ansi --bg-blue --yellow --bold "$marker")
 
         y=$((1 + $5 * 2))
