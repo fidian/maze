@@ -216,6 +216,72 @@ maze::makeMaze() {
 }
 
 
+# Attempt to move the player in the indicated direction.
+#
+# $1 - Destination variable name for the position data.
+# $2 - Move direction, either 1 or -1
+# $3-$5 - Position data
+# $6-$@ - Board data
+maze::move() {
+    local board boardX boardY playerDir playerX playerY stepDir target
+
+    target=$1
+    stepDir=$2
+    playerX=$3
+    playerY=$4
+    playerDir=$5
+    boardX=$6
+    boardY=$7
+    board=$8
+
+    local "$target" && assign::array "$target" "$playerX" "$playerY" "$playerDir"
+}
+
+
+maze::move position 1 "${position[@]}" "${board[@]}"
+# Reads a key from the keyboard and maps it to a code.
+#
+# $1 - Destination variable name for the code.
+maze::readKey() {
+    local code key
+
+    readkey::code key
+
+    case "$key" in
+        # Arrow, vi, vi+shift, wasd, wasd+shift, numberPad
+        ARROW_UP|k|K|w|W|8)
+            code=FORWARD
+            ;;
+
+        ARROW_LEFT|h|H|a|A|4)
+            code=LEFT
+            ;;
+
+        ARROW_RIGHT|l|L|d|D|6)
+            code=RIGHT
+            ;;
+
+        ARROW_DOWN|j|J|s|S|5|2)
+            code=BACK
+            ;;
+
+        "?")
+            code=HELP
+            ;;
+
+        ESCAPE|q|Q|x|X|$'\x18')
+            code=EXIT
+            ;;
+
+        *)
+            code=UNKNOWN
+            ;;
+    esac
+
+    local "$1" && assign::value "$1" "$code"
+}
+
+
 # Sets the initial position for the player
 #
 # $1 - Destination variable name for the position data array.
@@ -288,13 +354,91 @@ maze::showBoardData() {
 }
 
 
+# Turns the character 90 degrees
+#
+# $1 - Destination variable for the new position
+# $2 - Turn direction, -1 is left and 1 is right
+# $3-$@ - Position array elements
+maze::turn() {
+    local dir
+
+    dir=$(($5 + $2))
+
+    case "$dir" in
+        -1)
+            dir=3
+            ;;
+        4)
+            dir=0
+            ;;
+    esac
+
+    local "$1" && assign::array "$1" "$3" "$4" "$dir"
+}
+
+
 maze() {
-    local board position
+    local board boardRows position
 
     maze::makeMaze board 20 10
     maze::setInitialPosition position "${board[@]}"
     maze::showBoardData "${board[@]}" "${position[@]}"
-    set | grep ^position=
+    boardRows=$((board[1] * 2 + 1))
+
+    while maze::readKey key; do
+        case "$key" in
+            FORWARD)
+                ansi::up "$boardRows"
+                maze::move position 1 "${position[@]}" "${board[@]}"
+                ;;
+
+            LEFT)
+                ansi::up "$boardRows"
+                maze::turn position -1 "${position[@]}"
+                ;;
+
+            RIGHT)
+                ansi::up "$boardRows"
+                maze::turn position 1 "${position[@]}"
+                ;;
+
+            BACK)
+                ansi::up "$boardRows"
+                maze::move position -1 "${position[@]}" "${board[@]}"
+                ;;
+
+            HELP)
+                ansi::up "$boardRows"
+                ansi::eraseDisplay 0
+                echo ""
+                echo "Navigate through the maze. Try to find the exit."
+                echo ""
+                echo "Up, W, K, 8 = Move forward."
+                echo "Down, S, J, 5, 2 = Move backward."
+                echo "Left, A, H, 4 = Turn left."
+                echo "Right, D, L, 6 = Turn right."
+                echo "Escape, Q, X = Leave game."
+                echo ""
+                ;;
+
+            EXIT)
+                echo ""
+                echo "Thanks for playing!"
+
+                return
+                ;;
+
+            UNKNOWN)
+                ansi::up "$boardRows"
+                ansi::eraseDisplay 0
+                echo ""
+                echo "Sorry, I do not understand that command. Press ? for help."
+                echo ""
+                ;;
+        esac
+
+        maze::showBoardData "${board[@]}" "${position[@]}"
+    done
 }
 
 
