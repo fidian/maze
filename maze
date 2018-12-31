@@ -110,6 +110,25 @@ maze::carvePaths() {
 }
 
 
+# See if the player made their way to the exit.
+#
+# $1 - Exit coords "X,Y" in cells
+# $2 - Number of moves.
+# $3-$5 - Player data (x, y, direction)
+#
+# Returns true if the user found the exit.
+maze::checkForExit() {
+    if [[ "$3,$4" == "$1" ]]; then
+        echo ""
+        echo "Congratulations! You found your way out in $2 moves."
+
+        return 0
+    fi
+
+    return 1
+}
+
+
 # Determines if it is acceptable to make a path connecting two cells.
 #
 # $1 - Index in the board data for the cell where we start
@@ -256,12 +275,15 @@ maze::move() {
             ;;
     esac
 
-    if [[ "${board:index + rowSize * moveY + moveX:1}" == " " ]]; then
-        playerX=$((playerX + moveX))
-        playerY=$((playerY + moveY))
+    if [[ "${board:index + rowSize * moveY + moveX:1}" != " " ]]; then
+        return 1
     fi
 
+    playerX=$((playerX + moveX))
+    playerY=$((playerY + moveY))
+
     local "$target" && assign::array "$target" "$playerX" "$playerY" "$playerDir"
+    return 0
 }
 
 
@@ -418,24 +440,20 @@ maze::turn() {
 
 
 maze() {
-    local board boardRows position
+    local board boardRows exitCoords moves position
 
     maze::makeMaze board 20 10
     maze::setInitialPosition position "${board[@]}"
     maze::showBoardData "${board[@]}" "${position[@]}"
     boardRows=$((board[1] * 2 + 1))
+    exitCoords="${board[5]},${board[6]}"
+    moves=0
 
     while maze::readKey key; do
         case "$key" in
             FORWARD)
-                maze::move position 1 "${position[@]}" "${board[@]}"
-
-                if [[ "${position[0]},${position[1]}" == "${board[5]},${board[6]}" ]]; then
-                    echo ""
-                    echo "Congratulations! You found your way out!"
-                    return
-                fi
-
+                maze::move position 1 "${position[@]}" "${board[@]}" && moves=$((moves + 1))
+                maze::checkForExit "$exitCoords" "$moves" "${position[@]}" && return
                 ansi::up "$boardRows"
                 ;;
 
@@ -450,14 +468,8 @@ maze() {
                 ;;
 
             BACK)
-                maze::move position -1 "${position[@]}" "${board[@]}"
-
-                if [[ "${position[0]},${position[1]}" == "${board[5]},${board[6]}" ]]; then
-                    echo ""
-                    echo "Congratulations! You found your way out!"
-                    return
-                fi
-
+                maze::move position -1 "${position[@]}" "${board[@]}" && moves=$((moves + 1))
+                maze::checkForExit "$exitCoords" "$moves" "${position[@]}" && return
                 ansi::up "$boardRows"
                 ;;
 
