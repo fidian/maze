@@ -210,7 +210,6 @@ maze::makeMaze() {
 
     # Make corridors
     maze::carvePaths boardData "${boardData[@]}"
-    # maze::showBoardData "${boardData[@]}"
 
     local "$1" && assign::array "$1" "${boardData[@]}"
 }
@@ -223,7 +222,7 @@ maze::makeMaze() {
 # $3-$5 - Position data
 # $6-$@ - Board data
 maze::move() {
-    local board boardX boardY playerDir playerX playerY stepDir target
+    local board boardX index moveX moveY playerDir playerX playerY rowSize stepDir target
 
     target=$1
     stepDir=$2
@@ -231,14 +230,41 @@ maze::move() {
     playerY=$4
     playerDir=$5
     boardX=$6
-    boardY=$7
     board=$8
+    rowSize=$((boardX * 2 + 1))
+    index=$((rowSize + playerY * rowSize * 2 + playerX * 2 + 1))
+
+    case "$playerDir" in
+        0)
+            moveX=0
+            moveY=$((- stepDir))
+            ;;
+
+        1)
+            moveX=$stepDir
+            moveY=0
+            ;;
+
+        2)
+            moveX=0
+            moveY=$stepDir
+            ;;
+
+        3)
+            moveX=$((- stepDir))
+            moveY=0
+            ;;
+    esac
+
+    if [[ "${board:index + rowSize * moveY + moveX:1}" == " " ]]; then
+        playerX=$((playerX + moveX))
+        playerY=$((playerY + moveY))
+    fi
 
     local "$target" && assign::array "$target" "$playerX" "$playerY" "$playerDir"
 }
 
 
-maze::move position 1 "${position[@]}" "${board[@]}"
 # Reads a key from the keyboard and maps it to a code.
 #
 # $1 - Destination variable name for the code.
@@ -319,7 +345,7 @@ maze::setInitialPosition() {
 #
 # $@ - The maze board array, optionally followed by the position array.
 maze::showBoardData() {
-    local board index line lines marker rowSize x y
+    local board exitColor index line lines marker markerColor rowSize startColor x y
 
     x=$1
     board=$3
@@ -331,24 +357,38 @@ maze::showBoardData() {
         board=${board:rowSize}
     done
 
-    if [[ -n "$4" ]]; then
-        marker="^>v<*"
-        marker=${marker:${10-4}:1}
-        marker=$(ansi --bg-blue --yellow --bold "$marker")
-
+    if [[ -n "$8" ]]; then
+        # Position array
+        marker="^>v<"
+        marker=${marker:${10}:1}
+        y=$((1 + $9 * 2))
+        lines[$y]="${lines[y]:0:1 + $8 * 2}$marker${lines[y]:2 + $8 * 2}"
+    elif [[ -n "$4" ]]; then
+        # Starting position
         y=$((1 + $5 * 2))
-        line=${lines[$y]}
-        lines[$y]="${line:0:1 + $4 * 2}$marker${line:2 + $4 * 2}"
+        lines[$y]="${lines[y]:0:1 + $4 * 2}*${lines[y]:2 + $4 * 2}"
     fi
 
     if [[ -n "$6" ]]; then
-        marker=$(ansi --green --bold X)
         y=$((1 + $7 * 2))
-        line=${lines[$y]}
-        lines[$y]="${line:0:1 + $6 * 2}E${line:2 + $6 * 2}"
+        lines[$y]="${lines[y]:0:1 + $6 * 2}X${lines[y]:2 + $6 * 2}"
     fi
 
+    if [[ -n "$marker" ]]; then
+        markerColor=$(ansi --no-newline --bg-blue --yellow --bold "$marker")
+    else
+        # Does not match anything
+        marker="XXX"
+        markerColor="XXX"
+    fi
+
+    startColor=$(ansi --no-newline --yellow --bold "*")
+    exitColor=$(ansi --no-newline --green --bold X)
+
     for line in "${lines[@]}"; do
+        line=${line/$marker/$markerColor}
+        line=${line/\*/$startColor}
+        line=${line/X/$exitColor}
         echo "$line"
     done
 }
@@ -388,8 +428,15 @@ maze() {
     while maze::readKey key; do
         case "$key" in
             FORWARD)
-                ansi::up "$boardRows"
                 maze::move position 1 "${position[@]}" "${board[@]}"
+
+                if [[ "${position[0]},${position[1]}" == "${board[5]},${board[6]}" ]]; then
+                    echo ""
+                    echo "Congratulations! You found your way out!"
+                    return
+                fi
+
+                ansi::up "$boardRows"
                 ;;
 
             LEFT)
@@ -403,8 +450,15 @@ maze() {
                 ;;
 
             BACK)
-                ansi::up "$boardRows"
                 maze::move position -1 "${position[@]}" "${board[@]}"
+
+                if [[ "${position[0]},${position[1]}" == "${board[5]},${board[6]}" ]]; then
+                    echo ""
+                    echo "Congratulations! You found your way out!"
+                    return
+                fi
+
+                ansi::up "$boardRows"
                 ;;
 
             HELP)
