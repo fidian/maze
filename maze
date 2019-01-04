@@ -14,13 +14,15 @@
 # [1] Y position, in cells
 # [2] Direction facing (0=North, 1=East, 2=South, 3=West
 
+# Disable warning about escaping a single quote
+# shellcheck disable=SC1003
+
 # shellcheck disable=SC1091
 . bpm
 bpm::include ansi
 bpm::include array
 bpm::include assign
 bpm::include readkey
-
 
 # Pick a spot in the maze near the edge as a start.
 # Dig tunnels all over.
@@ -129,6 +131,53 @@ maze::checkForExit() {
 }
 
 
+# Determine the corridor edges
+#
+# $1 - Variable to get the edges array
+# $2 - The view
+maze::corridorPortions() {
+    local left right
+
+    case "${2:0:2}" in
+        "  ")
+            left=('_ ' ' |' '_|' '  ')
+            ;;
+
+        " X")
+            left=('__' '  ' '__' '  ')
+            ;;
+
+        "X ")
+            left=('\ ' '  ' '  ' '/ ')
+            ;;
+
+        "XX")
+            left=('\ ' ' |' ' |' '/ ')
+            ;;
+    esac
+
+    case "${2:1:2}" in
+        "  ")
+            right=(' _' '| ' '|_' '  ')
+            ;;
+
+        " X")
+            right=(' /' '  ' '  ' ' \')
+            ;;
+
+        "X ")
+            right=('__' '  ' '__' '  ')
+            ;;
+
+        "XX")
+            right=(' /' '| ' '| ' ' \')
+            ;;
+    esac
+
+    local "$1" && assign::array "$1" "${left[@]}" "${right[@]}"
+}
+
+
 # Determines if it is acceptable to make a path connecting two cells.
 #
 # $1 - Index in the board data for the cell where we start
@@ -165,6 +214,55 @@ maze::isValidPath() {
     fi
 
     return 0
+}
+
+
+# Look around from a specific cell.
+#
+# $1 - Destination variable name to get a string.
+# $2 - Position X in cells.
+# $3 - Postiion Y in cells.
+# $4 - Direction to look (0=north, 1=east, 2=south, 3=west)
+# $5 - Board width in cells.
+# $6 - Board data.
+#
+# Provides a string with three characters - left wall, forward wall, right
+# wall. Walls are replaced with X.
+maze::lookAround() {
+    local board e index n rowSize s view w x y
+
+    x=$2
+    y=$3
+    rowSize=$((1 + $5 * 2))
+    board=$6
+    index=$((rowSize + y * rowSize * 2 + x * 2 + 1))
+    n=${board:index - rowSize:1}
+    s=${board:index + rowSize:1}
+    w=${board:index - 1:1}
+    e=${board:index + 1:1}
+
+    case "$4" in
+        0)
+            view="$w$n$e"
+            ;;
+
+        1)
+            view="$n$e$s"
+            ;;
+
+        2)
+            view="$e$s$w"
+            ;;
+
+        3)
+            view="$s$w$n"
+            ;;
+    esac
+
+    view=${view//|/X}
+    view=${view//-/X}
+
+    local "$1" && assign::value "$1" "$view"
 }
 
 
@@ -416,6 +514,228 @@ maze::showBoardData() {
 }
 
 
+# Display the in-maze view
+#
+# $1-$3 - The positional data
+# $4-$@ - The board data
+maze::showCorridor() {
+    local corridor deltaX deltaY line
+
+    case "$3" in
+        0)
+            deltaX=0
+            deltaY=-1
+            ;;
+
+        1)
+            deltaX=1
+            deltaY=0
+            ;;
+
+        2)
+            deltaX=0
+            deltaY=1
+            ;;
+
+        3)
+            deltaX=-1
+            deltaY=0
+            ;;
+    esac
+
+    maze::showCorridor4 corridor "$1" "$2" "$3" "$4" "$6" "$deltaX" "$deltaY"
+
+    for line in "${corridor[@]}"; do
+        echo "$line"
+    done
+}
+
+
+# Show the farthest point the user can see.
+#
+# $1 - Destination variable for the corridor array
+# $2 - Position X in cells.
+# $3 - Postiion Y in cells.
+# $4 - Direction to look (0=north, 1=east, 2=south, 3=west)
+# $5 - Board width in cells.
+# $6 - Board data.
+maze::showCorridor1() {
+    local bits lines view target
+
+    target=$1
+    shift
+    maze::lookAround view "$@"
+    echo "view1: ...$view..."
+    maze::corridorPortions bits "$view"
+
+    case "${view:1:1}" in
+        " ")
+            lines=(
+                "${bits[0]}"'   '"${bits[4]}"
+                "${bits[1]}"'\ /'"${bits[5]}"
+                "${bits[2]}"'/ \'"${bits[6]}"
+                "${bits[3]}"'   '"${bits[7]}"
+            )
+            ;;
+
+        X)
+            lines=(
+                "${bits[0]}___${bits[4]}"
+                "${bits[1]}   ${bits[5]}"
+                "${bits[2]}___${bits[6]}"
+                "${bits[3]}   ${bits[7]}"
+            )
+            ;;
+    esac
+
+    local "$target" && assign::array "$target" "${lines[@]}"
+}
+
+
+# Show one step away from the farthest point the user can see.
+#
+# $1 - Destination variable for the corridor array
+# $2 - Position X in cells.
+# $3 - Postiion Y in cells.
+# $4 - Direction to look (0=north, 1=east, 2=south, 3=west)
+# $5 - Board width in cells.
+# $6 - Board data.
+# $7 - Delta X for traveling forward.
+# $8 - Delta Y for traveling forward.
+maze::showCorridor2() {
+    local bits c lines view
+
+    maze::lookAround view "$2" "$3" "$4" "$5" "$6"
+    echo "view2: ...$view..."
+
+    if [[ "${view:1:1}" == "X" ]]; then
+        c=(
+            '_______'
+            '       '
+            '       '
+            '       '
+            '_______'
+            '       '
+        )
+    else
+        maze::showCorridor1 c "$(($2 + $7))" "$(($3 + $8))" "$4" "$5" "$6"
+        c=('       ' "${c[@]}" '       ')
+    fi
+
+    maze::corridorPortions bits "$view"
+    lines=(
+        "${bits[0]}${c[0]}${bits[4]}"
+        "${bits[1]}${c[1]}${bits[5]}"
+        "${bits[1]}${c[2]}${bits[5]}"
+        "${bits[1]}${c[3]}${bits[5]}"
+        "${bits[2]}${c[4]}${bits[6]}"
+        "${bits[3]}${c[5]}${bits[7]}"
+    );
+
+    local "$1" && assign::array "$1" "${lines[@]}"
+}
+
+
+# Show two steps away from the farthest point the user can see.
+#
+# $1 - Destination variable for the corridor array
+# $2 - Position X in cells.
+# $3 - Postiion Y in cells.
+# $4 - Direction to look (0=north, 1=east, 2=south, 3=west)
+# $5 - Board width in cells.
+# $6 - Board data.
+# $7 - Delta X for traveling forward.
+# $8 - Delta Y for traveling forward.
+maze::showCorridor3() {
+    local bits c lines view
+
+    maze::lookAround view "$2" "$3" "$4" "$5" "$6"
+    echo "view3: ...$view..."
+
+    if [[ "${view:1:1}" == "X" ]]; then
+        c=(
+            '___________'
+            '           '
+            '           '
+            '           '
+            '           '
+            '           '
+            '___________'
+            '           '
+        )
+    else
+        maze::showCorridor2 c "$(($2 + $7))" "$(($3 + $8))" "$4" "$5" "$6" "$7" "$8"
+        c=('           ' "${c[@]}" '           ')
+    fi
+
+    maze::corridorPortions bits "$view"
+    lines=(
+        "${bits[0]}${c[0]}${bits[4]}"
+        "${bits[1]}${c[1]}${bits[5]}"
+        "${bits[1]}${c[2]}${bits[5]}"
+        "${bits[1]}${c[3]}${bits[5]}"
+        "${bits[1]}${c[4]}${bits[5]}"
+        "${bits[1]}${c[5]}${bits[5]}"
+        "${bits[2]}${c[6]}${bits[6]}"
+        "${bits[3]}${c[7]}${bits[7]}"
+    );
+
+    local "$1" && assign::array "$1" "${lines[@]}"
+}
+
+
+# Show three steps away from the farthest point the user can see.
+#
+# $1 - Destination variable for the corridor array
+# $2 - Position X in cells.
+# $3 - Postiion Y in cells.
+# $4 - Direction to look (0=north, 1=east, 2=south, 3=west)
+# $5 - Board width in cells.
+# $6 - Board data.
+# $7 - Delta X for traveling forward.
+# $8 - Delta Y for traveling forward.
+maze::showCorridor4() {
+    local bits c lines view
+
+    maze::lookAround view "$2" "$3" "$4" "$5" "$6"
+    echo "view4: ...$view..."
+
+    if [[ "${view:1:1}" == "X" ]]; then
+        c=(
+            '_______________'
+            '               '
+            '               '
+            '               '
+            '               '
+            '               '
+            '               '
+            '               '
+            '_______________'
+            '               '
+        )
+    else
+        maze::showCorridor3 c "$(($2 + $7))" "$(($3 + $8))" "$4" "$5" "$6" "$7" "$8"
+        c=('               ' "${c[@]}" '               ')
+    fi
+
+    maze::corridorPortions bits "$view"
+    lines=(
+        "${bits[0]}${c[0]}${bits[4]}"
+        "${bits[1]}${c[1]}${bits[5]}"
+        "${bits[1]}${c[2]}${bits[5]}"
+        "${bits[1]}${c[3]}${bits[5]}"
+        "${bits[1]}${c[4]}${bits[5]}"
+        "${bits[1]}${c[5]}${bits[5]}"
+        "${bits[1]}${c[6]}${bits[5]}"
+        "${bits[1]}${c[7]}${bits[5]}"
+        "${bits[2]}${c[8]}${bits[6]}"
+        "${bits[3]}${c[9]}${bits[7]}"
+    );
+
+    local "$1" && assign::array "$1" "${lines[@]}"
+}
+
+
 # Turns the character 90 degrees
 #
 # $1 - Destination variable for the new position
@@ -440,12 +760,21 @@ maze::turn() {
 
 
 maze() {
-    local board boardRows exitCoords moves position
+    local board displaySize exitCoords moves position topDown
 
     maze::makeMaze board 20 10
     maze::setInitialPosition position "${board[@]}"
-    maze::showBoardData "${board[@]}" "${position[@]}"
-    boardRows=$((board[1] * 2 + 1))
+    topDown=false
+
+    if $topDown; then
+        maze::showBoardData "${board[@]}" "${position[@]}"
+        displaySize=$((board[1] * 2 + 1))
+    else
+        maze::showCorridor "${position[@]}" "${board[@]}"
+        displaySize=10
+    fi
+    echo "$displaySize" # FIXME
+
     exitCoords="${board[5]},${board[6]}"
     moves=0
 
@@ -454,27 +783,27 @@ maze() {
             FORWARD)
                 maze::move position 1 "${position[@]}" "${board[@]}" && moves=$((moves + 1))
                 maze::checkForExit "$exitCoords" "$moves" "${position[@]}" && return
-                ansi::up "$boardRows"
+                # ansi::up "$displaySize"
                 ;;
 
             LEFT)
-                ansi::up "$boardRows"
+                # ansi::up "$displaySize"
                 maze::turn position -1 "${position[@]}"
                 ;;
 
             RIGHT)
-                ansi::up "$boardRows"
+                # ansi::up "$displaySize"
                 maze::turn position 1 "${position[@]}"
                 ;;
 
             BACK)
                 maze::move position -1 "${position[@]}" "${board[@]}" && moves=$((moves + 1))
                 maze::checkForExit "$exitCoords" "$moves" "${position[@]}" && return
-                ansi::up "$boardRows"
+                # ansi::up "$displaySize"
                 ;;
 
             HELP)
-                ansi::up "$boardRows"
+                # ansi::up "$displaySize"
                 ansi::eraseDisplay 0
                 echo ""
                 echo "Navigate through the maze. Try to find the exit."
@@ -495,7 +824,7 @@ maze() {
                 ;;
 
             UNKNOWN)
-                ansi::up "$boardRows"
+                # ansi::up "$displaySize"
                 ansi::eraseDisplay 0
                 echo ""
                 echo "Sorry, I do not understand that command. Press ? for help."
@@ -503,7 +832,12 @@ maze() {
                 ;;
         esac
 
-        maze::showBoardData "${board[@]}" "${position[@]}"
+        if $topDown; then
+            maze::showBoardData "${board[@]}" "${position[@]}"
+        else
+            maze::showBoardData "${board[@]}" "${position[@]}"
+            maze::showCorridor "${position[@]}" "${board[@]}"
+        fi
     done
 }
 
