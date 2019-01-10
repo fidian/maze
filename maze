@@ -91,21 +91,20 @@ maze::carvePaths() {
             validPaths[${#validPaths[@]}]="0,1"
         fi
 
-        case "${#validPaths[@]}" in
-            2|3)
+        if [[ "${#validPaths[@]}" != 0 ]]; then
+            if [[ "${#validPaths[@]}" != 1 ]]; then
                 # If there's other options, put this back in the list for later processing
                 leftToCheck[${#leftToCheck[@]}]=$coords
-                ;&
+            fi
 
-            1)
-                random=$((RANDOM % ${#validPaths[@]}))
-                delta=${validPaths[random]}
-                center=$((center + ${delta#*,} * rowSize + ${delta%,*}))
-                board=${board:0:center}' '${board:center + 1}
-                lastX=$((coordX + ${delta%,*}))
-                lastY=$((coordY + ${delta#*,}))
-                leftToCheck[${#leftToCheck[@]}]=$lastX,$lastY
-        esac
+            random=$((RANDOM % ${#validPaths[@]}))
+            delta=${validPaths[random]}
+            center=$((center + ${delta#*,} * rowSize + ${delta%,*}))
+            board=${board:0:center}' '${board:center + 1}
+            lastX=$((coordX + ${delta%,*}))
+            lastY=$((coordY + ${delta#*,}))
+            leftToCheck[${#leftToCheck[@]}]=$lastX,$lastY
+        fi
     done
 
     local "$1" && assign::array "$1" "$boardX" "$boardY" "$board" "$startX" "$startY" "$lastX" "$lastY"
@@ -128,53 +127,6 @@ maze::checkForExit() {
     fi
 
     return 1
-}
-
-
-# Determine the corridor edges
-#
-# $1 - Variable to get the edges array
-# $2 - The view
-maze::corridorPortions() {
-    local left right
-
-    case "${2:0:2}" in
-        "  ")
-            left=('_ ' ' |' '_|' '  ')
-            ;;
-
-        " X")
-            left=('__' '  ' '__' '  ')
-            ;;
-
-        "X ")
-            left=('\ ' '  ' '  ' '/ ')
-            ;;
-
-        "XX")
-            left=('\ ' ' |' ' |' '/ ')
-            ;;
-    esac
-
-    case "${2:1:2}" in
-        "  ")
-            right=(' _' '| ' '|_' '  ')
-            ;;
-
-        " X")
-            right=(' /' '  ' '  ' ' \')
-            ;;
-
-        "X ")
-            right=('__' '  ' '__' '  ')
-            ;;
-
-        "XX")
-            right=(' /' '| ' '| ' ' \')
-            ;;
-    esac
-
-    local "$1" && assign::array "$1" "${left[@]}" "${right[@]}"
 }
 
 
@@ -263,6 +215,57 @@ maze::lookAround() {
     view=${view//-/X}
 
     local "$1" && assign::value "$1" "$view"
+}
+
+
+# Determine what's on the left and right sides of the view.
+#
+# $1 - Destination variable for the left and right walls.
+# $2-$4 - The positional data
+# $5-$@ - The board data
+#
+# The left and right walls have the nearest wall as the first character and as
+# you look farther, that increases the index of the letter in the string.
+maze::lookDownCorridor() {
+    local deltaX deltaY left posX posY right view
+
+    case "$4" in
+        0)
+            deltaX=0
+            deltaY=-1
+            ;;
+
+        1)
+            deltaX=1
+            deltaY=0
+            ;;
+
+        2)
+            deltaX=0
+            deltaY=1
+            ;;
+
+        3)
+            deltaX=-1
+            deltaY=0
+            ;;
+    esac
+
+    left=""
+    right=""
+    view="? ?"
+    posX="$2"
+    posY="$3"
+
+    while [[ "${view:1:1}" == " " ]]; do
+        maze::lookAround view "$posX" "$posY" "$4" "$5" "$7"
+        left+=${view:0:1}
+        right+=${view:2}
+        posX=$((posX + deltaX))
+        posY=$((posY + deltaY))
+    done
+
+    local "$1" && assign::array "$1" "$left" "$right"
 }
 
 
@@ -419,6 +422,10 @@ maze::readKey() {
             code=EXIT
             ;;
 
+        m|M)
+            code=MAP
+            ;;
+
         *)
             code=UNKNOWN
             ;;
@@ -519,220 +526,14 @@ maze::showBoardData() {
 # $1-$3 - The positional data
 # $4-$@ - The board data
 maze::showCorridor() {
-    local corridor deltaX deltaY line
+    local corridor walls
 
-    case "$3" in
-        0)
-            deltaX=0
-            deltaY=-1
-            ;;
-
-        1)
-            deltaX=1
-            deltaY=0
-            ;;
-
-        2)
-            deltaX=0
-            deltaY=1
-            ;;
-
-        3)
-            deltaX=-1
-            deltaY=0
-            ;;
-    esac
-
-    maze::showCorridor4 corridor "$1" "$2" "$3" "$4" "$6" "$deltaX" "$deltaY"
+    maze::lookDownCorridor walls "$@"
+    maze::viewCorridor corridor "${walls[@]}"
 
     for line in "${corridor[@]}"; do
         echo "$line"
     done
-}
-
-
-# Show the farthest point the user can see.
-#
-# $1 - Destination variable for the corridor array
-# $2 - Position X in cells.
-# $3 - Postiion Y in cells.
-# $4 - Direction to look (0=north, 1=east, 2=south, 3=west)
-# $5 - Board width in cells.
-# $6 - Board data.
-maze::showCorridor1() {
-    local bits lines view target
-
-    target=$1
-    shift
-    maze::lookAround view "$@"
-    echo "view1: ...$view..."
-    maze::corridorPortions bits "$view"
-
-    case "${view:1:1}" in
-        " ")
-            lines=(
-                "${bits[0]}"'   '"${bits[4]}"
-                "${bits[1]}"'\ /'"${bits[5]}"
-                "${bits[2]}"'/ \'"${bits[6]}"
-                "${bits[3]}"'   '"${bits[7]}"
-            )
-            ;;
-
-        X)
-            lines=(
-                "${bits[0]}___${bits[4]}"
-                "${bits[1]}   ${bits[5]}"
-                "${bits[2]}___${bits[6]}"
-                "${bits[3]}   ${bits[7]}"
-            )
-            ;;
-    esac
-
-    local "$target" && assign::array "$target" "${lines[@]}"
-}
-
-
-# Show one step away from the farthest point the user can see.
-#
-# $1 - Destination variable for the corridor array
-# $2 - Position X in cells.
-# $3 - Postiion Y in cells.
-# $4 - Direction to look (0=north, 1=east, 2=south, 3=west)
-# $5 - Board width in cells.
-# $6 - Board data.
-# $7 - Delta X for traveling forward.
-# $8 - Delta Y for traveling forward.
-maze::showCorridor2() {
-    local bits c lines view
-
-    maze::lookAround view "$2" "$3" "$4" "$5" "$6"
-    echo "view2: ...$view..."
-
-    if [[ "${view:1:1}" == "X" ]]; then
-        c=(
-            '_______'
-            '       '
-            '       '
-            '       '
-            '_______'
-            '       '
-        )
-    else
-        maze::showCorridor1 c "$(($2 + $7))" "$(($3 + $8))" "$4" "$5" "$6"
-        c=('       ' "${c[@]}" '       ')
-    fi
-
-    maze::corridorPortions bits "$view"
-    lines=(
-        "${bits[0]}${c[0]}${bits[4]}"
-        "${bits[1]}${c[1]}${bits[5]}"
-        "${bits[1]}${c[2]}${bits[5]}"
-        "${bits[1]}${c[3]}${bits[5]}"
-        "${bits[2]}${c[4]}${bits[6]}"
-        "${bits[3]}${c[5]}${bits[7]}"
-    );
-
-    local "$1" && assign::array "$1" "${lines[@]}"
-}
-
-
-# Show two steps away from the farthest point the user can see.
-#
-# $1 - Destination variable for the corridor array
-# $2 - Position X in cells.
-# $3 - Postiion Y in cells.
-# $4 - Direction to look (0=north, 1=east, 2=south, 3=west)
-# $5 - Board width in cells.
-# $6 - Board data.
-# $7 - Delta X for traveling forward.
-# $8 - Delta Y for traveling forward.
-maze::showCorridor3() {
-    local bits c lines view
-
-    maze::lookAround view "$2" "$3" "$4" "$5" "$6"
-    echo "view3: ...$view..."
-
-    if [[ "${view:1:1}" == "X" ]]; then
-        c=(
-            '___________'
-            '           '
-            '           '
-            '           '
-            '           '
-            '           '
-            '___________'
-            '           '
-        )
-    else
-        maze::showCorridor2 c "$(($2 + $7))" "$(($3 + $8))" "$4" "$5" "$6" "$7" "$8"
-        c=('           ' "${c[@]}" '           ')
-    fi
-
-    maze::corridorPortions bits "$view"
-    lines=(
-        "${bits[0]}${c[0]}${bits[4]}"
-        "${bits[1]}${c[1]}${bits[5]}"
-        "${bits[1]}${c[2]}${bits[5]}"
-        "${bits[1]}${c[3]}${bits[5]}"
-        "${bits[1]}${c[4]}${bits[5]}"
-        "${bits[1]}${c[5]}${bits[5]}"
-        "${bits[2]}${c[6]}${bits[6]}"
-        "${bits[3]}${c[7]}${bits[7]}"
-    );
-
-    local "$1" && assign::array "$1" "${lines[@]}"
-}
-
-
-# Show three steps away from the farthest point the user can see.
-#
-# $1 - Destination variable for the corridor array
-# $2 - Position X in cells.
-# $3 - Postiion Y in cells.
-# $4 - Direction to look (0=north, 1=east, 2=south, 3=west)
-# $5 - Board width in cells.
-# $6 - Board data.
-# $7 - Delta X for traveling forward.
-# $8 - Delta Y for traveling forward.
-maze::showCorridor4() {
-    local bits c lines view
-
-    maze::lookAround view "$2" "$3" "$4" "$5" "$6"
-    echo "view4: ...$view..."
-
-    if [[ "${view:1:1}" == "X" ]]; then
-        c=(
-            '_______________'
-            '               '
-            '               '
-            '               '
-            '               '
-            '               '
-            '               '
-            '               '
-            '_______________'
-            '               '
-        )
-    else
-        maze::showCorridor3 c "$(($2 + $7))" "$(($3 + $8))" "$4" "$5" "$6" "$7" "$8"
-        c=('               ' "${c[@]}" '               ')
-    fi
-
-    maze::corridorPortions bits "$view"
-    lines=(
-        "${bits[0]}${c[0]}${bits[4]}"
-        "${bits[1]}${c[1]}${bits[5]}"
-        "${bits[1]}${c[2]}${bits[5]}"
-        "${bits[1]}${c[3]}${bits[5]}"
-        "${bits[1]}${c[4]}${bits[5]}"
-        "${bits[1]}${c[5]}${bits[5]}"
-        "${bits[1]}${c[6]}${bits[5]}"
-        "${bits[1]}${c[7]}${bits[5]}"
-        "${bits[2]}${c[8]}${bits[6]}"
-        "${bits[3]}${c[9]}${bits[7]}"
-    );
-
-    local "$1" && assign::array "$1" "${lines[@]}"
 }
 
 
@@ -759,22 +560,767 @@ maze::turn() {
 }
 
 
+# Build the 3D view.
+#
+# $1 - Destination variable for the corridor array of strings
+# $2 - Walls on left side until center is blocked
+# $3 - Walls on right side until center is blocked
+maze::viewCorridor() {
+    local a b c d e f g h i j l1 l2 l3 l4 l5 reset
+
+    l1=$(ansi --bold --color=255 --bg-color=232 --no-restore)
+    l2=$(ansi --bold --color=250 --bg-color=232 --no-restore)
+    l3=$(ansi --color=245 --bg-color=232 --no-restore)
+    l4=$(ansi --color=240 --bg-color=232 --no-restore)
+    l5=$(ansi --color=235 --bg-color=232 --no-restore)
+    reset=$(ansi --reset-color)
+
+    a=$l1
+    b=$l1
+    c=$l1
+    d=$l1
+    e=$l1
+    f=$l1
+    g=$l1
+    h=$l1
+    i=$l1
+    j=$l1
+
+    case "${2:0:1}" in
+        " ")
+            a+='_'
+            b+=' '
+            c+=' '
+            d+=' '
+            e+=' '
+            f+=' '
+            g+=' '
+            h+=' '
+            i+='_'
+            j+=' '
+            ;;
+
+        "X")
+            a+='\'
+            b+=' '
+            c+=' '
+            d+=' '
+            e+=' '
+            f+=' '
+            g+=' '
+            h+=' '
+            i+=' '
+            j+='/'
+            ;;
+    esac
+
+    case "${2:0:2}" in
+        "XX")
+            a+=' '
+            b+=' '
+            c+=' '
+            d+=' '
+            e+=' '
+            f+=' '
+            g+=' '
+            h+=' '
+            i+=' '
+            j+=' '
+            ;;
+
+        "X "|" X"|"  ")
+            a+=' '
+            b+='|'
+            c+='|'
+            d+='|'
+            e+='|'
+            f+='|'
+            g+='|'
+            h+='|'
+            i+='|'
+            j+=' '
+            ;;
+
+        "X")
+            a+=' _______________'
+            b+='|               '
+            c+='|               '
+            d+='|               '
+            e+='|               '
+            f+='|               '
+            g+='|               '
+            h+='|               '
+            i+='|_______________'
+            j+='                '
+            ;;
+
+        " ")
+            a+='________________'
+            b+='                '
+            c+='                '
+            d+='                '
+            e+='                '
+            f+='                '
+            g+='                '
+            h+='                '
+            i+='________________'
+            j+='                '
+            ;;
+    esac
+
+    a+=$l2
+    b+=$l2
+    c+=$l2
+    d+=$l2
+    e+=$l2
+    f+=$l2
+    g+=$l2
+    h+=$l2
+    i+=$l2
+    j+=$l2
+
+    case "${2:1:1}" in
+        " ")
+            a+=' '
+            b+='_'
+            c+=' '
+            d+=' '
+            e+=' '
+            f+=' '
+            g+=' '
+            h+='_'
+            i+=' '
+            j+=' '
+            ;;
+
+        "X")
+            a+=' '
+            b+='\'
+            c+=' '
+            d+=' '
+            e+=' '
+            f+=' '
+            g+=' '
+            h+=' '
+            i+='/'
+            j+=' '
+            ;;
+    esac
+
+    case "${2:1:2}" in
+        "XX")
+            a+=' '
+            b+=' '
+            c+=' '
+            d+=' '
+            e+=' '
+            f+=' '
+            g+=' '
+            h+=' '
+            i+=' '
+            j+=' '
+            ;;
+
+        "X "|" X"|"  ")
+            a+=' '
+            b+=' '
+            c+='|'
+            d+='|'
+            e+='|'
+            f+='|'
+            g+='|'
+            h+='|'
+            i+=' '
+            j+=' '
+            ;;
+
+        "X")
+            a+='            '
+            b+=' ___________'
+            c+='|           '
+            d+='|           '
+            e+='|           '
+            f+='|           '
+            g+='|           '
+            h+='|___________'
+            i+='            '
+            j+='            '
+            ;;
+
+        " ")
+            a+='            '
+            b+='____________'
+            c+='            '
+            d+='            '
+            e+='            '
+            f+='            '
+            g+='            '
+            h+='____________'
+            i+='            '
+            j+='            '
+            ;;
+    esac
+
+    a+=$l3
+    b+=$l3
+    c+=$l3
+    d+=$l3
+    e+=$l3
+    f+=$l3
+    g+=$l3
+    h+=$l3
+    i+=$l3
+    j+=$l3
+
+    case "${2:2:1}" in
+        " ")
+            a+=' '
+            b+=' '
+            c+='_'
+            d+=' '
+            e+=' '
+            f+=' '
+            g+='_'
+            h+=' '
+            i+=' '
+            j+=' '
+            ;;
+
+        "X")
+            a+=' '
+            b+=' '
+            c+='\'
+            d+=' '
+            e+=' '
+            f+=' '
+            g+=' '
+            h+='/'
+            i+=' '
+            j+=' '
+            ;;
+    esac
+
+    case "${2:2:2}" in
+        "XX")
+            a+=' '
+            b+=' '
+            c+=' '
+            d+=' '
+            e+=' '
+            f+=' '
+            g+=' '
+            h+=' '
+            i+=' '
+            j+=' '
+            ;;
+
+        "X "|" X"|"  ")
+            a+=' '
+            b+=' '
+            c+=' '
+            d+='|'
+            e+='|'
+            f+='|'
+            g+='|'
+            h+=' '
+            i+=' '
+            j+=' '
+            ;;
+
+        "X")
+            a+='        '
+            b+='        '
+            c+=' _______'
+            d+='|       '
+            e+='|       '
+            f+='|       '
+            g+='|_______'
+            h+='        '
+            i+='        '
+            j+='        '
+            ;;
+
+        " ")
+            a+='        '
+            b+='        '
+            c+='________'
+            d+='        '
+            e+='        '
+            f+='        '
+            g+='________'
+            h+='        '
+            i+='        '
+            j+='        '
+            ;;
+    esac
+
+    a+=$l4
+    b+=$l4
+    c+=$l4
+    d+=$l4
+    e+=$l4
+    f+=$l4
+    g+=$l4
+    h+=$l4
+    i+=$l4
+    j+=$l4
+
+    case "${2:3:1}" in
+        " ")
+            a+=' '
+            b+=' '
+            c+=' '
+            d+='_'
+            e+=' '
+            f+='_'
+            g+=' '
+            h+=' '
+            i+=' '
+            j+=' '
+            ;;
+
+        "X")
+            a+=' '
+            b+=' '
+            c+=' '
+            d+='\'
+            e+=' '
+            f+=' '
+            g+='/'
+            h+=' '
+            i+=' '
+            j+=' '
+            ;;
+    esac
+
+    case "${2:3:2}" in
+        " X"|"  ")
+            a+=' '
+            b+=' '
+            c+=' '
+            d+=' '
+            e+='|'
+            f+='|'
+            g+=' '
+            h+=' '
+            i+=' '
+            j+=' '
+            ;;
+
+        "XX"|"X ")
+            a+=' '
+            b+=' '
+            c+=' '
+            d+=' '
+            e+=' '
+            f+=' '
+            g+=' '
+            h+=' '
+            i+=' '
+            j+=' '
+            ;;
+
+        "X")
+            a+='    '
+            b+='    '
+            c+='    '
+            d+=' ___'
+            e+='|   '
+            f+='|___'
+            g+='    '
+            h+='    '
+            i+='    '
+            j+='    '
+            ;;
+
+        " ")
+            a+='    '
+            b+='    '
+            c+='    '
+            d+='____'
+            e+='    '
+            f+='____'
+            g+='    '
+            h+='    '
+            i+='    '
+            j+='    '
+            ;;
+    esac
+
+    a+=$l5
+    b+=$l5
+    c+=$l5
+    d+=$l5
+    e+=$l5
+    f+=$l5
+    g+=$l5
+    h+=$l5
+    i+=$l5
+    j+=$l5
+
+    case "${2:4:1}" in
+        "X"|" ")
+            a+='  '
+            b+='  '
+            c+='  '
+            d+='  '
+            e+='\ '
+            f+='/ '
+            g+='  '
+            h+='  '
+            i+='  '
+            j+='  '
+            ;;
+    esac
+
+    case "${3:4:1}" in
+        " "|"X")
+            a+=' '
+            b+=' '
+            c+=' '
+            d+=' '
+            e+='/'
+            f+='\'
+            g+=' '
+            h+=' '
+            i+=' '
+            j+=' '
+            ;;
+    esac
+
+    a+=$l4
+    b+=$l4
+    c+=$l4
+    d+=$l4
+    e+=$l4
+    f+=$l4
+    g+=$l4
+    h+=$l4
+    i+=$l4
+    j+=$l4
+
+    case "${3:3:2}" in
+        "XX"|"X ")
+            a+=' '
+            b+=' '
+            c+=' '
+            d+=' '
+            e+=' '
+            f+=' '
+            g+=' '
+            h+=' '
+            i+=' '
+            j+=' '
+            ;;
+
+        " X"|"  "|"X")
+            a+=' '
+            b+=' '
+            c+=' '
+            d+=' '
+            e+='|'
+            f+='|'
+            g+=' '
+            h+=' '
+            i+=' '
+            j+=' '
+            ;;
+
+        " ")
+            a+=' '
+            b+=' '
+            c+=' '
+            d+='_'
+            e+=' '
+            f+='_'
+            g+=' '
+            h+=' '
+            i+=' '
+            j+=' '
+            ;;
+    esac
+
+    case "${3:3:1}" in
+        " ")
+            a+=' '
+            b+=' '
+            c+=' '
+            d+='_'
+            e+=' '
+            f+='_'
+            g+=' '
+            h+=' '
+            i+=' '
+            j+=' '
+            ;;
+
+        "X")
+            a+=' '
+            b+=' '
+            c+=' '
+            d+='/'
+            e+=' '
+            f+=' '
+            g+='\'
+            h+=' '
+            i+=' '
+            j+=' '
+            ;;
+    esac
+
+    a+=$l3
+    b+=$l3
+    c+=$l3
+    d+=$l3
+    e+=$l3
+    f+=$l3
+    g+=$l3
+    h+=$l3
+    i+=$l3
+    j+=$l3
+
+    case "${3:2:2}" in
+        "XX")
+            a+=' '
+            b+=' '
+            c+=' '
+            d+=' '
+            e+=' '
+            f+=' '
+            g+=' '
+            h+=' '
+            i+=' '
+            j+=' '
+            ;;
+
+        "X "|" X"|"  "|"X")
+            a+=' '
+            b+=' '
+            c+=' '
+            d+='|'
+            e+='|'
+            f+='|'
+            g+='|'
+            h+=' '
+            i+=' '
+            j+=' '
+            ;;
+
+        " ")
+            a+=' '
+            b+=' '
+            c+='_'
+            d+=' '
+            e+=' '
+            f+=' '
+            g+='_'
+            h+=' '
+            i+=' '
+            j+=' '
+            ;;
+    esac
+
+    case "${3:2:1}" in
+        " ")
+            a+=' '
+            b+=' '
+            c+='_'
+            d+=' '
+            e+=' '
+            f+=' '
+            g+='_'
+            h+=' '
+            i+=' '
+            j+=' '
+            ;;
+
+        "X")
+            a+=' '
+            b+=' '
+            c+='/'
+            d+=' '
+            e+=' '
+            f+=' '
+            g+=' '
+            h+='\'
+            i+=' '
+            j+=' '
+            ;;
+    esac
+
+    a+=$l2
+    b+=$l2
+    c+=$l2
+    d+=$l2
+    e+=$l2
+    f+=$l2
+    g+=$l2
+    h+=$l2
+    i+=$l2
+    j+=$l2
+
+    case "${3:1:2}" in
+        "XX")
+            a+=' '
+            b+=' '
+            c+=' '
+            d+=' '
+            e+=' '
+            f+=' '
+            g+=' '
+            h+=' '
+            i+=' '
+            j+=' '
+            ;;
+
+        "X "|" X"|"  "|"X")
+            a+=' '
+            b+=' '
+            c+='|'
+            d+='|'
+            e+='|'
+            f+='|'
+            g+='|'
+            h+='|'
+            i+=' '
+            j+=' '
+            ;;
+
+        " ")
+            a+=' '
+            b+='_'
+            c+=' '
+            d+=' '
+            e+=' '
+            f+=' '
+            g+=' '
+            h+='_'
+            i+=' '
+            j+=' '
+            ;;
+    esac
+
+    case "${3:1:1}" in
+        " ")
+            a+=' '
+            b+='_'
+            c+=' '
+            d+=' '
+            e+=' '
+            f+=' '
+            g+=' '
+            h+='_'
+            i+=' '
+            j+=' '
+            ;;
+
+        "X")
+            a+=' '
+            b+='/'
+            c+=' '
+            d+=' '
+            e+=' '
+            f+=' '
+            g+=' '
+            h+=' '
+            i+='\'
+            j+=' '
+            ;;
+    esac
+
+    a+=$l1
+    b+=$l1
+    c+=$l1
+    d+=$l1
+    e+=$l1
+    f+=$l1
+    g+=$l1
+    h+=$l1
+    i+=$l1
+    j+=$l1
+
+    case "${3:0:2}" in
+        "XX")
+            a+=' '
+            b+=' '
+            c+=' '
+            d+=' '
+            e+=' '
+            f+=' '
+            g+=' '
+            h+=' '
+            i+=' '
+            j+=' '
+            ;;
+
+        "X "|" X"|"  "|"X")
+            a+=' '
+            b+='|'
+            c+='|'
+            d+='|'
+            e+='|'
+            f+='|'
+            g+='|'
+            h+='|'
+            i+='|'
+            j+=' '
+            ;;
+
+        " ")
+            a+='_'
+            b+=' '
+            c+=' '
+            d+=' '
+            e+=' '
+            f+=' '
+            g+=' '
+            h+=' '
+            i+='_'
+            j+=' '
+            ;;
+    esac
+
+    case "${3:0:1}" in
+        " ")
+            a+='_'
+            b+=' '
+            c+=' '
+            d+=' '
+            e+=' '
+            f+=' '
+            g+=' '
+            h+=' '
+            i+='_'
+            j+=' '
+            ;;
+
+        "X")
+            a+='/'
+            b+=' '
+            c+=' '
+            d+=' '
+            e+=' '
+            f+=' '
+            g+=' '
+            h+=' '
+            i+=' '
+            j+='\'
+            ;;
+    esac
+
+    j+=$reset
+
+    local "$1" && assign::array "$1" "$a" "$b" "$c" "$d" "$e" "$f" "$g" "$h" "$i" "$j"
+}
+
+
 maze() {
-    local board displaySize exitCoords moves position topDown
+    local board exitCoords moves position
 
     maze::makeMaze board 20 10
     maze::setInitialPosition position "${board[@]}"
-    topDown=false
 
-    if $topDown; then
-        maze::showBoardData "${board[@]}" "${position[@]}"
-        displaySize=$((board[1] * 2 + 1))
-    else
-        maze::showCorridor "${position[@]}" "${board[@]}"
-        displaySize=10
-    fi
-    echo "$displaySize" # FIXME
-
+    maze::showCorridor "${position[@]}" "${board[@]}"
     exitCoords="${board[5]},${board[6]}"
     moves=0
 
@@ -783,27 +1329,31 @@ maze() {
             FORWARD)
                 maze::move position 1 "${position[@]}" "${board[@]}" && moves=$((moves + 1))
                 maze::checkForExit "$exitCoords" "$moves" "${position[@]}" && return
-                # ansi::up "$displaySize"
+                ansi::up 10
                 ;;
 
             LEFT)
-                # ansi::up "$displaySize"
+                ansi::up 10
                 maze::turn position -1 "${position[@]}"
                 ;;
 
             RIGHT)
-                # ansi::up "$displaySize"
+                ansi::up 10
                 maze::turn position 1 "${position[@]}"
                 ;;
 
             BACK)
                 maze::move position -1 "${position[@]}" "${board[@]}" && moves=$((moves + 1))
                 maze::checkForExit "$exitCoords" "$moves" "${position[@]}" && return
-                # ansi::up "$displaySize"
+                ansi::up 10
+                ;;
+
+            MAP)
+                maze::showBoardData "${board[@]}" "${position[@]}"
                 ;;
 
             HELP)
-                # ansi::up "$displaySize"
+                ansi::up 10
                 ansi::eraseDisplay 0
                 echo ""
                 echo "Navigate through the maze. Try to find the exit."
@@ -813,6 +1363,7 @@ maze() {
                 echo "Left, A, H, 4 = Turn left."
                 echo "Right, D, L, 6 = Turn right."
                 echo "Escape, Q, X = Leave game."
+                echo "M = Show the map."
                 echo ""
                 ;;
 
@@ -824,7 +1375,7 @@ maze() {
                 ;;
 
             UNKNOWN)
-                # ansi::up "$displaySize"
+                ansi::up 10
                 ansi::eraseDisplay 0
                 echo ""
                 echo "Sorry, I do not understand that command. Press ? for help."
@@ -832,12 +1383,7 @@ maze() {
                 ;;
         esac
 
-        if $topDown; then
-            maze::showBoardData "${board[@]}" "${position[@]}"
-        else
-            maze::showBoardData "${board[@]}" "${position[@]}"
-            maze::showCorridor "${position[@]}" "${board[@]}"
-        fi
+        maze::showCorridor "${position[@]}" "${board[@]}"
     done
 }
 
