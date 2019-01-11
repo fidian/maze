@@ -218,7 +218,8 @@ maze::lookAround() {
 }
 
 
-# Determine what's on the left and right sides of the view.
+# Determine what's on the left and right sides of the view and if we end at the
+# exit.
 #
 # $1 - Destination variable for the left and right walls.
 # $2-$4 - The positional data
@@ -227,7 +228,7 @@ maze::lookAround() {
 # The left and right walls have the nearest wall as the first character and as
 # you look farther, that increases the index of the letter in the string.
 maze::lookDownCorridor() {
-    local deltaX deltaY left posX posY right view
+    local deltaX deltaY endAtExit left posX posY right view
 
     case "$4" in
         0)
@@ -256,8 +257,13 @@ maze::lookDownCorridor() {
     view="? ?"
     posX="$2"
     posY="$3"
+    endAtExit=false
 
-    while [[ "${view:1:1}" == " " ]]; do
+    while [[ "${view:1:1}" == " " ]] && [[ "${#left}" -lt 5 ]]; do
+        if [[ "$posX" == "${10}" ]] && [[ "$posY" == "${11}" ]]; then
+            endAtExit=true
+        fi
+
         maze::lookAround view "$posX" "$posY" "$4" "$5" "$7"
         left+=${view:0:1}
         right+=${view:2}
@@ -265,7 +271,7 @@ maze::lookDownCorridor() {
         posY=$((posY + deltaY))
     done
 
-    local "$1" && assign::array "$1" "$left" "$right"
+    local "$1" && assign::array "$1" "$left" "$right" "$endAtExit"
 }
 
 
@@ -526,10 +532,10 @@ maze::showBoardData() {
 # $1-$3 - The positional data
 # $4-$@ - The board data
 maze::showCorridor() {
-    local corridor walls
+    local corridor wallsAndExit
 
-    maze::lookDownCorridor walls "$@"
-    maze::viewCorridor corridor "${walls[@]}"
+    maze::lookDownCorridor wallsAndExit "$@"
+    maze::viewCorridor corridor "${wallsAndExit[@]}"
 
     for line in "${corridor[@]}"; do
         echo "$line"
@@ -565,6 +571,7 @@ maze::turn() {
 # $1 - Destination variable for the corridor array of strings
 # $2 - Walls on left side until center is blocked
 # $3 - Walls on right side until center is blocked
+# $4 - true if we end at the exit, false otherwise
 maze::viewCorridor() {
     local a b c d e f g h i j l1 l2 l3 l4 l5 reset
 
@@ -735,16 +742,29 @@ maze::viewCorridor() {
             ;;
 
         "X")
-            a+='            '
-            b+=' ___________'
-            c+='|           '
-            d+='|           '
-            e+='|           '
-            f+='|           '
-            g+='|           '
-            h+='|___________'
-            i+='            '
-            j+='            '
+            if [[ "$4" == true ]]; then
+                a+='    |---|   '
+                b+=' ___|   |___'
+                c+='|   |---|   '
+                d+='|   |   |   '
+                e+='|   |---|   '
+                f+='|   |   |   '
+                g+='|   |---|   '
+                h+='|___|   |___'
+                i+='    |---|   '
+                j+='            '
+            else
+                a+='            '
+                b+=' ___________'
+                c+='|           '
+                d+='|           '
+                e+='|           '
+                f+='|           '
+                g+='|           '
+                h+='|___________'
+                i+='            '
+                j+='            '
+            fi
             ;;
 
         " ")
@@ -828,16 +848,29 @@ maze::viewCorridor() {
             ;;
 
         "X")
-            a+='        '
-            b+='        '
-            c+=' _______'
-            d+='|       '
-            e+='|       '
-            f+='|       '
-            g+='|_______'
-            h+='        '
-            i+='        '
-            j+='        '
+            if [[ "$4" == true ]]; then
+                a+='        '
+                b+='        '
+                c+=' __|-|__'
+                d+='|  |-|  '
+                e+='|  |-|  '
+                f+='|  |-|  '
+                g+='|__|-|__'
+                h+='        '
+                i+='        '
+                j+='        '
+            else
+                a+='        '
+                b+='        '
+                c+=' _______'
+                d+='|       '
+                e+='|       '
+                f+='|       '
+                g+='|_______'
+                h+='        '
+                i+='        '
+                j+='        '
+            fi
             ;;
 
         " ")
@@ -921,16 +954,29 @@ maze::viewCorridor() {
             ;;
 
         "X")
-            a+='    '
-            b+='    '
-            c+='    '
-            d+=' ___'
-            e+='|   '
-            f+='|___'
-            g+='    '
-            h+='    '
-            i+='    '
-            j+='    '
+            if [[ "$4" == true ]]; then
+                a+='    '
+                b+='    '
+                c+='    '
+                d+=' _#_'
+                e+='| # '
+                f+='|_#_'
+                g+='    '
+                h+='    '
+                i+='    '
+                j+='    '
+            else
+                a+='    '
+                b+='    '
+                c+='    '
+                d+=' ___'
+                e+='|   '
+                f+='|___'
+                g+='    '
+                h+='    '
+                i+='    '
+                j+='    '
+            fi
             ;;
 
         " ")
@@ -960,16 +1006,29 @@ maze::viewCorridor() {
 
     case "${2:4:1}" in
         "X"|" ")
-            a+='  '
-            b+='  '
-            c+='  '
-            d+='  '
-            e+='\ '
-            f+='/ '
-            g+='  '
-            h+='  '
-            i+='  '
-            j+='  '
+            if [[ "$4" == true ]]; then
+                a+='  '
+                b+='  '
+                c+='  '
+                d+='  '
+                e+='\+'
+                f+='/+'
+                g+='  '
+                h+='  '
+                i+='  '
+                j+='  '
+            else
+                a+='  '
+                b+='  '
+                c+='  '
+                d+='  '
+                e+='\ '
+                f+='/ '
+                g+='  '
+                h+='  '
+                i+='  '
+                j+='  '
+            fi
             ;;
     esac
 
