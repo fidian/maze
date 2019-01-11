@@ -1,4 +1,30 @@
 #!/usr/bin/env bash
+#/ Maze Game (in Bash)
+#/
+#/ You wake up in a corridor. There are no lights, but you are able to see
+#/ because of a flashlight on the floor. You look around and find a marker, a
+#/ small notebook, but that's it. Everything you normally take with is gone.
+#/ Your memories are all jumbled and you don't recall how you got here.
+#/ When opening the notebook, you find this written on the first page.
+#/
+#/    Find your way out.
+#/    Good luck.
+#/
+#/ You look around. It's a very scary, dark, silent maze. You start to draw
+#/ a map of the explored area.
+#/
+#/
+#/ Use arrow keys, wasd, or hjkl to move. Press Q or escape to exit. M will
+#/ bring up a map of where you have been.
+#/
+#/ Options:
+#/     --width=X    Set the maze width to X, default 20.
+#/     --height=Y   Set the maze height to Y, default 10.
+#/     --seed=S     Set the random seed to this number.
+#/     --help       Show this amazing help!
+#/
+#/ Don't set too large of an X and Y. This is written entirely in Bash, which
+#/ is not known for blazing speed.
 
 # Maze board array members
 # [0] Width of board, in cells.
@@ -20,6 +46,7 @@
 # shellcheck disable=SC1091
 . bpm
 bpm::include ansi
+bpm::include arg
 bpm::include array
 bpm::include assign
 bpm::include readkey
@@ -130,6 +157,32 @@ maze::checkForExit() {
 }
 
 
+# Copy an area from the board to the map
+#
+# $1 - Destination variable
+# $2 - Position X
+# $3 - Position Y
+# $4 - Map data
+# $5 - Board X
+# $6 - Board data
+maze::copyMap() {
+    local map index rowSize
+
+    map=$4
+    rowSize=$((1 + $5 * 2))
+
+    # Start with top left corner diagonally adjacent to the player
+    index=$(($3 * rowSize * 2 + $2 * 2))
+    map="${map:0:index}${6:index:3}${map:index + 3}"
+    index=$((index + rowSize))
+    map="${map:0:index}${6:index:3}${map:index + 3}"
+    index=$((index + rowSize))
+    map="${map:0:index}${6:index:3}${map:index + 3}"
+
+    local "$1" && assign::value "$1" "$map"
+}
+
+
 # Determines if it is acceptable to make a path connecting two cells.
 #
 # $1 - Index in the board data for the cell where we start
@@ -221,16 +274,18 @@ maze::lookAround() {
 # Determine what's on the left and right sides of the view and if we end at the
 # exit.
 #
-# $1 - Destination variable for the left and right walls.
-# $2-$4 - The positional data
-# $5-$@ - The board data
+# $1 - Destination variable for the left and right walls, "end is exit" flag,
+#      and the map.
+# $2 - The map that we are building from board data.
+# $3-$5 - The positional data.
+# $6-$@ - The board data.
 #
 # The left and right walls have the nearest wall as the first character and as
 # you look farther, that increases the index of the letter in the string.
 maze::lookDownCorridor() {
     local deltaX deltaY endAtExit left posX posY right view
 
-    case "$4" in
+    case "$5" in
         0)
             deltaX=0
             deltaY=-1
@@ -255,23 +310,25 @@ maze::lookDownCorridor() {
     left=""
     right=""
     view="? ?"
-    posX="$2"
-    posY="$3"
+    posX="$3"
+    posY="$4"
     endAtExit=false
+    map="$2"
 
     while [[ "${view:1:1}" == " " ]] && [[ "${#left}" -lt 5 ]]; do
-        if [[ "$posX" == "${10}" ]] && [[ "$posY" == "${11}" ]]; then
+        if [[ "$posX" == "${11}" ]] && [[ "$posY" == "${12}" ]]; then
             endAtExit=true
         fi
 
-        maze::lookAround view "$posX" "$posY" "$4" "$5" "$7"
+        maze::lookAround view "$posX" "$posY" "$5" "$6" "$8"
+        maze::copyMap map "$posX" "$posY" "$map" "$6" "$8"
         left+=${view:0:1}
         right+=${view:2}
         posX=$((posX + deltaX))
         posY=$((posY + deltaY))
     done
 
-    local "$1" && assign::array "$1" "$left" "$right" "$endAtExit"
+    local "$1" && assign::array "$1" "$left" "$right" "$endAtExit" "$map"
 }
 
 
@@ -476,12 +533,14 @@ maze::setInitialPosition() {
 
 # Display a maze board.
 #
-# $@ - The maze board array, optionally followed by the position array.
+# $1-$3 - The position array
+# $4 - Board width
+# $5 - Board data
 maze::showBoardData() {
-    local board exitColor index line lines marker markerColor rowSize startColor x y
+    local board line lines marker rowSize x y
 
-    x=$1
-    board=$3
+    x=$4
+    board=$5
     rowSize=$((2 * x + 1))
     lines=()
 
@@ -490,38 +549,13 @@ maze::showBoardData() {
         board=${board:rowSize}
     done
 
-    if [[ -n "$8" ]]; then
-        # Position array
-        marker="^>v<"
-        marker=${marker:${10}:1}
-        y=$((1 + $9 * 2))
-        lines[$y]="${lines[y]:0:1 + $8 * 2}$marker${lines[y]:2 + $8 * 2}"
-    elif [[ -n "$4" ]]; then
-        # Starting position
-        y=$((1 + $5 * 2))
-        lines[$y]="${lines[y]:0:1 + $4 * 2}*${lines[y]:2 + $4 * 2}"
-    fi
-
-    if [[ -n "$6" ]]; then
-        y=$((1 + $7 * 2))
-        lines[$y]="${lines[y]:0:1 + $6 * 2}X${lines[y]:2 + $6 * 2}"
-    fi
-
-    if [[ -n "$marker" ]]; then
-        markerColor=$(ansi --no-newline --bg-blue --yellow --bold "$marker")
-    else
-        # Does not match anything
-        marker="XXX"
-        markerColor="XXX"
-    fi
-
-    startColor=$(ansi --no-newline --yellow --bold "*")
-    exitColor=$(ansi --no-newline --green --bold X)
+    # Position array
+    marker="^>v<"
+    marker=${marker:$3:1}
+    y=$((1 + $2 * 2))
+    lines[$y]="${lines[y]:0:1 + $1 * 2}$(ansi --no-newline --bg-blue --yellow --bold "$marker")${lines[y]:2 + $1 * 2}"
 
     for line in "${lines[@]}"; do
-        line=${line/$marker/$markerColor}
-        line=${line/\*/$startColor}
-        line=${line/X/$exitColor}
         echo "$line"
     done
 }
@@ -529,17 +563,23 @@ maze::showBoardData() {
 
 # Display the in-maze view
 #
-# $1-$3 - The positional data
-# $4-$@ - The board data
+# $1 - Destination variable for updated map.
+# $2 - Map data.
+# $3-$5 - The positional data
+# $6-$@ - The board data
 maze::showCorridor() {
-    local corridor wallsAndExit
+    local corridor corridorInfo target
 
-    maze::lookDownCorridor wallsAndExit "$@"
-    maze::viewCorridor corridor "${wallsAndExit[@]}"
+    target=$1
+    shift
+    maze::lookDownCorridor corridorInfo "$@"
+    maze::viewCorridor corridor "${corridorInfo[@]}"
 
     for line in "${corridor[@]}"; do
         echo "$line"
     done
+
+    local "$target" && assign::value "$target" "${corridorInfo[3]}"
 }
 
 
@@ -1374,12 +1414,32 @@ maze::viewCorridor() {
 
 
 maze() {
-    local board exitCoords moves position
+    local board exitCoords help map moves position seed
 
-    maze::makeMaze board 20 10
+    arg::getOption width --width "$@"
+    arg::getOption height --height "$@"
+    arg::getOption seed --seed "$@"
+    arg::getOption help --help "$@"
+
+    : "${width:=20}"
+    : "${height:=10}"
+
+    if [[ -n "$seed" ]]; then
+        RANDOM=$seed
+    fi
+
+    if [[ -n "$help" ]]; then
+        grep '^#/' "$0" | cut -b 4-
+
+        return
+    fi
+
+    maze::makeMaze board "$width" "$height"
+    map=${board[2]}
+    map=${map//?/ }
     maze::setInitialPosition position "${board[@]}"
 
-    maze::showCorridor "${position[@]}" "${board[@]}"
+    maze::showCorridor map "$map" "${position[@]}" "${board[@]}"
     exitCoords="${board[5]},${board[6]}"
     moves=0
 
@@ -1408,7 +1468,9 @@ maze() {
                 ;;
 
             MAP)
-                maze::showBoardData "${board[@]}" "${position[@]}"
+                echo ""
+                maze::showBoardData "${position[@]}" "${board[0]}" "$map"
+                echo ""
                 ;;
 
             HELP)
@@ -1442,7 +1504,7 @@ maze() {
                 ;;
         esac
 
-        maze::showCorridor "${position[@]}" "${board[@]}"
+        maze::showCorridor map "$map" "${position[@]}" "${board[@]}"
     done
 }
 
