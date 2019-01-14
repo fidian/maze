@@ -3,6 +3,8 @@ Maze Game (in Bash)
 
 Try to escape a maze, which is randomly generated.
 
+![Demo](demo.gif)
+
 The game works in Bash 3.2 and newer versions.
 
 
