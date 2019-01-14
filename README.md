@@ -14,8 +14,16 @@ Installation
 You should download this project and install [`bpm`], then run `bpm install` to get the dependencies.
 
 
-Usage
------
+In-Game Controls
+----------------
+
+Press `?` at any time for help. Navigate the maze using arrow keys, `WASD`, `HJKL`, or even number pad keys. Pressing `M` provides you a map of the explored area. Both `Q` and escape will let you leave the maze, though the escape key in Bash 3.2 takes a full second to be detected properly.
+
+Your goal is to find the ladder and escape this labyrinth.
+
+
+Command-Line Usage
+------------------
 
 There are a few options available when running `maze`.
 
