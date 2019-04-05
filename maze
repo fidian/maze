@@ -553,7 +553,7 @@ maze::showBoardData() {
     marker="^>v<"
     marker=${marker:$3:1}
     y=$((1 + $2 * 2))
-    lines[$y]="${lines[y]:0:1 + $1 * 2}$(ansi --no-newline --bg-blue --yellow --bold "$marker")${lines[y]:2 + $1 * 2}"
+    lines[$y]="${lines[y]:0:1 + $1 * 2}$(ansi::bgBlue)$(ansi::yellow)$(ansi::bold)$marker$(ansi::resetColor)${lines[y]:2 + $1 * 2}"
 
     for line in "${lines[@]}"; do
         echo "$line"
@@ -615,12 +615,12 @@ maze::turn() {
 maze::viewCorridor() {
     local a b c d e f g h i j l1 l2 l3 l4 l5 reset
 
-    l1=$(ansi --bold --color=255 --bg-black --no-restore)
-    l2=$(ansi --bold --color=250 --bg-black --no-restore)
-    l3=$(ansi --color=245 --bg-black --no-restore)
-    l4=$(ansi --color=240 --bg-black --no-restore)
-    l5=$(ansi --color=235 --bg-black --no-restore)
-    reset=$(ansi --reset-color)
+    l1="$(ansi::bold)$(ansi::color 255)$(ansi::bgBlack)"
+    l2="$(ansi::bold)$(ansi::color 250)$(ansi::bgBlack)"
+    l3="$(ansi::color 245)$(ansi::bgBlack)"
+    l4="$(ansi::color 240)$(ansi::bgBlack)"
+    l5="$(ansi::color 235)$(ansi::bgBlack)"
+    reset="$(ansi::resetColor)"
 
     a=$l1
     b=$l1
