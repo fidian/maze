@@ -615,11 +615,11 @@ maze::turn() {
 maze::viewCorridor() {
     local a b c d e f g h i j l1 l2 l3 l4 l5 reset
 
-    l1="$(ansi::bold)$(ansi::color 255)$(ansi::bgBlack)"
-    l2="$(ansi::bold)$(ansi::color 250)$(ansi::bgBlack)"
-    l3="$(ansi::color 245)$(ansi::bgBlack)"
-    l4="$(ansi::color 240)$(ansi::bgBlack)"
-    l5="$(ansi::color 235)$(ansi::bgBlack)"
+    l1="$(ansi::bold)$(ansi::color 255)$(ansi::bgColor 232)"
+    l2="$(ansi::bold)$(ansi::color 250)"
+    l3="$(ansi::color 245)"
+    l4="$(ansi::color 240)"
+    l5="$(ansi::color 235)"
     reset="$(ansi::resetColor)"
 
     a=$l1
@@ -1407,6 +1407,15 @@ maze::viewCorridor() {
             ;;
     esac
 
+    a+=$reset
+    b+=$reset
+    c+=$reset
+    d+=$reset
+    e+=$reset
+    f+=$reset
+    g+=$reset
+    h+=$reset
+    i+=$reset
     j+=$reset
 
     local "$1" && assign::array "$1" "$a" "$b" "$c" "$d" "$e" "$f" "$g" "$h" "$i" "$j"
