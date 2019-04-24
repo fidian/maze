@@ -44,12 +44,12 @@
 # shellcheck disable=SC1003
 
 # shellcheck disable=SC1091
-. bpm
-bpm::include ansi
-bpm::include arg
-bpm::include array
-bpm::include assign
-bpm::include readkey
+. bpm || { echo "You must install BPM"; exit 1; }
+bpm::include ansi || exit 1
+bpm::include arg || exit 1
+bpm::include array || exit 1
+bpm::include assign || exit 1
+bpm::include readkey || exit 1
 
 # Pick a spot in the maze near the edge as a start.
 # Dig tunnels all over.
