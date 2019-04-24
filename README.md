@@ -28,7 +28,7 @@ Command-Line Usage
 There are a few options available when running `maze`.
 
 * `--help` - Display a help message and a bit of a story behind how the player got into the maze.
-* `--width=X' - Set the width of the board. Default is 20. See note about board size.
+* `--width=X` - Set the width of the board. Default is 20. See note about board size.
 * `--height=Y` - Set the height of the board. Default is 10. See note about board size.
 * `--seed=S` - Sets the random number generator's seed. Use an integer when seeding the generator.
 
