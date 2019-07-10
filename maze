@@ -1425,6 +1425,11 @@ maze::viewCorridor() {
 maze() {
     local board exitCoords help map moves position seed
 
+    # In case the user is very fast or the shell is slow,
+    # disable echoing input to the terminal.
+    # shellcheck disable=SC2064
+    trap "stty '$(stty -g)'" EXIT
+    stty -echo
     arg::getOption width --width "$@"
     arg::getOption height --height "$@"
     arg::getOption seed --seed "$@"
